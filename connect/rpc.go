@@ -7,8 +7,14 @@ package connect
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"gochat/config"
+	"gochat/proto"
+	"gochat/tools"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/rcrowley/go-metrics"
 	"github.com/rpcxio/libkv/store"
 	etcdV3 "github.com/rpcxio/rpcx-etcd/client"
@@ -16,12 +22,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/server"
-	"gochat/config"
-	"gochat/proto"
-	"gochat/tools"
-	"strings"
-	"sync"
-	"time"
 )
 
 var logicRpcClient client.XClient
@@ -54,7 +54,7 @@ func (c *Connect) InitLogicRpcClient() (err error) {
 		logicRpcClient = client.NewXClient(config.Conf.Common.CommonEtcd.ServerPathLogic, client.Failtry, client.RandomSelect, d, client.DefaultOption)
 	})
 	if logicRpcClient == nil {
-		return errors.New("get rpc client nil")
+		logrus.Fatalf("get rpc client nil")
 	}
 	return
 }
