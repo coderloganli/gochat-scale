@@ -15,9 +15,6 @@
 ### [中文版本(Chinese version)](readme.md)
 
 ### Subscribe
-```
-Share architecture design, research and development, network security, hacker culture, and Internet knowledge
-```
 ![](./architecture/wx.jpg)
 
 ### gochat is a lightweight im server implemented using pure go
@@ -36,6 +33,8 @@ Share architecture design, research and development, network security, hacker cu
   * The vendor is also packaged in the warehouse. In addition, the entire project size of the vendor is about 66m, which can be used after git clone. Due to irresistible network factors, it may take a long time
   * Some package dependent versions have been upgraded. It is not recommended to try to compile this project on a lower version of golang. Try to upgrade to 1.18+
   * Optimization: dynamically update the service IP address according to the corresponding kV change in the watch etcd to ensure that other layers can perceive the added / removed layers
+* November 27, 2025
+    * Supports arbitrary startup order for all modules
 
 ### About Websocket && Tcp Support
 ```
