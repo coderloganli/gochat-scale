@@ -6,10 +6,11 @@
 package connect
 
 import (
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"gochat/proto"
 	"sync"
+
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 const NoRoom = -1
@@ -61,7 +62,7 @@ func (r *Room) Push(msg *proto.Msg) {
 }
 
 func (r *Room) DeleteChannel(ch *Channel) bool {
-	r.rLock.RLock()
+	r.rLock.Lock()
 	if ch.Next != nil {
 		//if not footer
 		ch.Next.Prev = ch.Prev
@@ -77,6 +78,6 @@ func (r *Room) DeleteChannel(ch *Channel) bool {
 	if r.OnlineCount <= 0 {
 		r.drop = true
 	}
-	r.rLock.RUnlock()
+	r.rLock.Unlock()
 	return r.drop
 }
