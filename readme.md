@@ -57,14 +57,6 @@ make compose-prod HOST_IP=<your-server-ip>
 - **Multi-Container Guide**: See [README-compose.md](./README-compose.md)
 - **Original Documentation**: See below or visit [github.com/LockGit/gochat](https://github.com/LockGit/gochat)
 
-## Legacy Deployment
-
-The original single-container deployment still works:
-
-```bash
-sh run.sh dev 127.0.0.1
-```
-
 ---
 
 ## Original README
