@@ -45,15 +45,15 @@ help:
 # Development commands
 compose-dev:
 	@echo "Starting GoChat in development mode..."
-	HOST_IP=$(HOST_IP) docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+	HOST_IP=$(HOST_IP) docker-compose -f docker-compose.yml -f deployments/docker-compose.dev.yml up
 
 compose-dev-build:
 	@echo "Building and starting GoChat in development mode..."
-	HOST_IP=$(HOST_IP) docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+	HOST_IP=$(HOST_IP) docker-compose -f docker-compose.yml -f deployments/docker-compose.dev.yml up --build
 
 compose-dev-down:
 	@echo "Stopping development environment..."
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
+	docker-compose -f docker-compose.yml -f deployments/docker-compose.dev.yml down
 
 # Production commands
 compose-prod:
@@ -63,7 +63,7 @@ compose-prod:
 		echo "Continuing in 3 seconds..."; \
 		sleep 3; \
 	fi
-	HOST_IP=$(HOST_IP) docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+	HOST_IP=$(HOST_IP) docker-compose -f docker-compose.yml -f deployments/docker-compose.prod.yml up -d
 
 compose-prod-build:
 	@echo "Building and starting GoChat in production mode..."
@@ -72,11 +72,11 @@ compose-prod-build:
 		echo "Continuing in 3 seconds..."; \
 		sleep 3; \
 	fi
-	HOST_IP=$(HOST_IP) docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+	HOST_IP=$(HOST_IP) docker-compose -f docker-compose.yml -f deployments/docker-compose.prod.yml up -d --build
 
 compose-prod-down:
 	@echo "Stopping production environment..."
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml down
+	docker-compose -f docker-compose.yml -f deployments/docker-compose.prod.yml down
 
 # Scaling example
 compose-scale:
@@ -105,8 +105,8 @@ clean:
 	@echo "WARNING: This will remove all GoChat containers, volumes, and images."
 	@echo "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
 	@sleep 5
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml down -v --rmi all || true
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml down -v --rmi all || true
+	docker-compose -f docker-compose.yml -f deployments/docker-compose.dev.yml down -v --rmi all || true
+	docker-compose -f docker-compose.yml -f deployments/docker-compose.prod.yml down -v --rmi all || true
 	@echo "Clean complete!"
 
 # Testing targets
@@ -126,7 +126,7 @@ test-unit:
 
 test-integration:
 	@echo "Running integration tests with Docker..."
-	docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+	docker-compose -f deployments/docker-compose.test.yml up --abort-on-container-exit
 
 # Code quality targets
 fmt:
