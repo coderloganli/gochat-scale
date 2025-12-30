@@ -46,11 +46,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: gochat:latest
-    command: ["-module", "logic"]
+    command: ["/app/gochat", "-module", "logic"]
     environment:
       - RUN_MODE=dev
-      - ETCD_HOST=etcd:2379
-      - REDIS_HOST=redis:6379
     depends_on:
       etcd:
         condition: service_healthy
@@ -70,11 +68,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: gochat:latest
-    command: ["-module", "connect_websocket"]
+    command: ["/app/gochat", "-module", "connect_websocket"]
     environment:
       - RUN_MODE=dev
-      - ETCD_HOST=etcd:2379
-      - REDIS_HOST=redis:6379
     ports:
       - "7000:7000"
     depends_on:
@@ -98,11 +94,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: gochat:latest
-    command: ["-module", "connect_tcp"]
+    command: ["/app/gochat", "-module", "connect_tcp"]
     environment:
       - RUN_MODE=dev
-      - ETCD_HOST=etcd:2379
-      - REDIS_HOST=redis:6379
     ports:
       - "7001:7001"
       - "7002:7002"
@@ -127,11 +121,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: gochat:latest
-    command: ["-module", "task"]
+    command: ["/app/gochat", "-module", "task"]
     environment:
       - RUN_MODE=dev
-      - ETCD_HOST=etcd:2379
-      - REDIS_HOST=redis:6379
     depends_on:
       etcd:
         condition: service_healthy
@@ -155,11 +147,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: gochat:latest
-    command: ["-module", "api"]
+    command: ["/app/gochat", "-module", "api"]
     environment:
       - RUN_MODE=dev
-      - ETCD_HOST=etcd:2379
-      - REDIS_HOST=redis:6379
     ports:
       - "7070:7070"
     depends_on:
@@ -183,10 +173,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: gochat:latest
-    command: ["-module", "site"]
+    command: ["/app/gochat", "-module", "site"]
     environment:
       - RUN_MODE=dev
-      - HOST_IP=${HOST_IP:-127.0.0.1}
     ports:
       - "8080:8080"
     depends_on:

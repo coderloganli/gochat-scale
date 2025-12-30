@@ -184,7 +184,7 @@ func (c *Connect) createConnectTcpRpcServer(network string, addr string) {
 
 func addRegistryPlugin(s *server.Server, network string, addr string) {
 	r := &serverplugin.EtcdV3RegisterPlugin{
-		ServiceAddress: network + "@" + addr,
+		ServiceAddress: tools.GetServiceAddress(network, addr),
 		EtcdServers:    []string{config.Conf.Common.CommonEtcd.Host},
 		BasePath:       config.Conf.Common.CommonEtcd.BasePath,
 		Metrics:        metrics.NewRegistry(),

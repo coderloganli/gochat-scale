@@ -42,15 +42,8 @@ COPY --from=builder /build/db /app/db
 # Create symlink so config.go can find config files at build path
 RUN mkdir -p /build && ln -s /app/config /build/config
 
-# Copy and set up entrypoint script
-COPY docker/entrypoint.sh /app/
-RUN chmod +x /app/entrypoint.sh
-
 # Default environment
 ENV RUN_MODE=dev
 
-# Entrypoint script will preprocess configs and start the service
-ENTRYPOINT ["/app/entrypoint.sh"]
-
 # Default command (can be overridden by docker-compose)
-CMD ["-module", "api"]
+CMD ["/app/gochat", "-module", "api"]
