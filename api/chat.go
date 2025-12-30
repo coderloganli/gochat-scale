@@ -28,7 +28,7 @@ func New() *Chat {
 	return &Chat{}
 }
 
-//api server,Also, you can use gin,echo ... framework wrap
+// api server,Also, you can use gin,echo ... framework wrap
 func (c *Chat) Run() {
 	//init rpc client
 	rpc.InitLogicRpcClient()
@@ -60,7 +60,7 @@ func (c *Chat) Run() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		logrus.Errorf("Server Shutdown:", err)
+		logrus.Errorf("Server Shutdown: %v", err)
 	}
 	logrus.Infof("Server exiting")
 	os.Exit(0)

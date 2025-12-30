@@ -112,7 +112,7 @@ func (rpc *RpcConnectPush) PushSingleMsg(ctx context.Context, pushMsgReq *proto.
 		bucket  *Bucket
 		channel *Channel
 	)
-	logrus.Info("rpc PushMsg :%v ", pushMsgReq)
+	logrus.Infof("rpc PushMsg :%v ", pushMsgReq)
 	if pushMsgReq == nil {
 		logrus.Errorf("rpc PushSingleMsg() args:(%v)", pushMsgReq)
 		return
