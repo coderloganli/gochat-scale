@@ -137,8 +137,72 @@ make compose-ps               # Check status
 # Production
 make compose-prod HOST_IP=x.x.x.x    # Deploy to server
 
+# Testing & Quality
+make test                     # Run all tests
+make test-coverage            # Run tests with coverage
+make fmt                      # Format code
+make vet                      # Run go vet
+make lint                     # Run linter
+
+# Building
+make build-binary             # Build gochat binary
+make build-image              # Build Docker image
+
 # Utilities
 make clean                    # Clean up everything
+```
+
+### CI/CD Pipeline
+
+#### GitHub Actions Workflow
+
+Automated CI/CD pipeline for testing, building, and deploying GoChat:
+
+- **Test**: Runs on every push and pull request
+  - Go fmt check
+  - Go vet static analysis
+  - Unit and integration tests with coverage
+  - Redis service container for tests
+
+- **Build**: Builds Docker image after tests pass
+  - Multi-stage Docker build
+  - Image caching for faster builds
+
+- **Push**: Pushes to Docker Hub (on push to branches)
+  - Multiple tags: `latest`, `<branch>`, `<git-sha>`
+  - Credentials via GitHub Secrets
+
+- **Deploy**: Optional deployment to environments
+  - Development: Auto-deploy on `dev` branch
+  - Staging: Auto-deploy on `staging` branch
+  - Production: Manual approval on `master` branch
+
+#### Setup GitHub Secrets
+
+Configure these in repository Settings → Secrets and variables → Actions:
+
+**Required for Docker Hub:**
+- `DOCKERHUB_USERNAME` - Your Docker Hub username
+- `DOCKERHUB_TOKEN` - Docker Hub access token
+
+**Optional for server deployment:**
+- `DEV_SERVER_HOST`, `DEV_SERVER_USER`, `DEV_SERVER_KEY`
+- `STAGING_SERVER_HOST`, `STAGING_SERVER_USER`, `STAGING_SERVER_KEY`
+- `PROD_SERVER_HOST`, `PROD_SERVER_USER`, `PROD_SERVER_KEY`
+
+#### Branch Strategy
+
+- `dev` → Development environment (auto-deploy)
+- `staging` → Staging environment (auto-deploy)
+- `master` → Production environment (manual approval)
+
+#### Manual Deployment
+
+```bash
+# Pull and deploy specific version
+./scripts/deploy.sh dev latest
+./scripts/deploy.sh staging abc123def
+./scripts/deploy.sh prod latest
 ```
 
 ### License

@@ -1,5 +1,5 @@
 
-.PHONY: build help compose-dev compose-dev-build compose-dev-down compose-prod compose-prod-build compose-prod-down compose-scale compose-logs compose-ps clean test-infra
+.PHONY: build help compose-dev compose-dev-build compose-dev-down compose-prod compose-prod-build compose-prod-down compose-scale compose-logs compose-ps clean test-infra test test-coverage test-unit test-integration fmt fmt-check vet lint build-binary build-image
 
 # Default HOST_IP for development
 HOST_IP ?= 127.0.0.1
@@ -24,6 +24,20 @@ help:
 	@echo "  compose-ps           - Show running services"
 	@echo "  test-infra           - Test infrastructure only (etcd + redis)"
 	@echo "  clean                - Remove all containers, volumes, and images"
+	@echo ""
+	@echo "Testing & Quality:"
+	@echo "  test                 - Run all tests"
+	@echo "  test-coverage        - Run tests with coverage report"
+	@echo "  test-unit            - Run unit tests only"
+	@echo "  test-integration     - Run integration tests with Docker"
+	@echo "  fmt                  - Format code with go fmt"
+	@echo "  fmt-check            - Check if code is formatted"
+	@echo "  vet                  - Run go vet"
+	@echo "  lint                 - Run golangci-lint"
+	@echo ""
+	@echo "Building:"
+	@echo "  build-binary         - Build gochat binary"
+	@echo "  build-image          - Build Docker image"
 	@echo ""
 	@echo "Environment variables:"
 	@echo "  HOST_IP=<ip>         - Set host IP address (default: 127.0.0.1)"
@@ -94,3 +108,50 @@ clean:
 	docker-compose -f docker-compose.yml -f docker-compose.dev.yml down -v --rmi all || true
 	docker-compose -f docker-compose.yml -f docker-compose.prod.yml down -v --rmi all || true
 	@echo "Clean complete!"
+
+# Testing targets
+test:
+	@echo "Running all tests..."
+	go test -v -race ./...
+
+test-coverage:
+	@echo "Running tests with coverage..."
+	go test -v -race -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+
+test-unit:
+	@echo "Running unit tests..."
+	go test -v -short ./...
+
+test-integration:
+	@echo "Running integration tests with Docker..."
+	docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+
+# Code quality targets
+fmt:
+	@echo "Formatting code..."
+	go fmt ./...
+
+fmt-check:
+	@echo "Checking code formatting..."
+	@test -z "$$(go fmt ./...)" || (echo "Code not formatted, run 'make fmt'" && exit 1)
+
+vet:
+	@echo "Running go vet..."
+	go vet ./...
+
+lint:
+	@echo "Running golangci-lint..."
+	golangci-lint run
+
+# Build targets
+build-binary:
+	@echo "Building gochat binary..."
+	CGO_ENABLED=1 GOOS=linux go build -tags=etcd -ldflags="-w -s" -o bin/gochat main.go
+	@echo "Binary built: bin/gochat"
+
+build-image:
+	@echo "Building Docker image..."
+	docker build -t gochat:latest -f docker/Dockerfile .
+	@echo "Image built: gochat:latest"
