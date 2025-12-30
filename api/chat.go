@@ -52,7 +52,7 @@ func (c *Chat) Run() {
 		}
 	}()
 	// if have two quit signal , this signal will priority capture ,also can graceful shutdown
-	quit := make(chan os.Signal)
+	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	<-quit
 	logrus.Infof("Shutdown Server ...")
