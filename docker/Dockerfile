@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for GoChat
 # Stage 1: Builder - Build the Go binary
-FROM golang:1.18 AS builder
+FROM golang:1.23 AS builder
 
 LABEL maintainer="Lock <lockexit@gmail.com>"
 
