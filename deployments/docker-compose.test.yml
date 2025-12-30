@@ -1,58 +1,22 @@
 version: '3.8'
 
 # Docker Compose configuration for running integration tests
-# Usage: docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+# Tests run on host machine against containerized services via exposed ports
+# Usage: docker-compose -f docker-compose.yml -f deployments/docker-compose.test.yml up -d
 
 services:
-  redis:
-    image: redis:5.0.9-alpine
-    container_name: gochat-test-redis
-    command: redis-server
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
+  # Expose etcd port for host access
   etcd:
-    image: quay.io/coreos/etcd:v3.5.9
-    container_name: gochat-test-etcd
-    environment:
-      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
-      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
-      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
-      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd:2380
-      - ETCD_INITIAL_CLUSTER=default=http://etcd:2380
-      - ETCD_INITIAL_CLUSTER_STATE=new
-      - ETCD_INITIAL_CLUSTER_TOKEN=gochat-test-cluster
-      - ETCD_NAME=default
     ports:
       - "2379:2379"
-    healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  test-runner:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.test
-    container_name: gochat-test-runner
-    depends_on:
-      redis:
-        condition: service_healthy
-      etcd:
-        condition: service_healthy
-    environment:
-      - REDIS_HOST=redis:6379
-      - ETCD_HOST=etcd:2379
-      - RUN_MODE=dev
-    networks:
-      - test-network
+  # Expose redis port for host access
+  redis:
+    ports:
+      - "6379:6379"
 
-networks:
-  test-network:
-    driver: bridge
+  # Expose connect-tcp port for integration tests
+  connect-tcp:
+    ports:
+      - "7001:7001"
+      - "7002:7002"

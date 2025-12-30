@@ -126,7 +126,14 @@ test-unit:
 
 test-integration:
 	@echo "Running integration tests with Docker..."
-	docker-compose -f deployments/docker-compose.test.yml up --abort-on-container-exit
+	@echo "Starting services..."
+	docker-compose -f docker-compose.yml -f deployments/docker-compose.test.yml up -d --build
+	@echo "Waiting for services to be healthy..."
+	@sleep 30
+	@echo "Running integration tests from host..."
+	go test -v ./... || (docker-compose -f docker-compose.yml -f deployments/docker-compose.test.yml down && exit 1)
+	@echo "Stopping services..."
+	docker-compose -f docker-compose.yml -f deployments/docker-compose.test.yml down
 
 # Code quality targets
 fmt:
