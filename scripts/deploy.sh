@@ -42,11 +42,11 @@ docker pull $DOCKER_IMAGE:$IMAGE_TAG
 
 # Stop existing services
 echo "Stopping existing services..."
-docker-compose -f docker-compose.yml -f deployments/docker-compose.$ENVIRONMENT.yml down
+docker compose -f docker-compose.yml -f deployments/docker-compose.$ENVIRONMENT.yml down
 
 # Start new services
 echo "Starting services..."
-docker-compose -f docker-compose.yml -f deployments/docker-compose.$ENVIRONMENT.yml up -d
+docker compose -f docker-compose.yml -f deployments/docker-compose.$ENVIRONMENT.yml up -d
 
 # Wait for services to start
 echo "Waiting for services to start..."
@@ -54,7 +54,7 @@ sleep 10
 
 # Health check
 echo "Checking service status..."
-docker-compose ps
+docker compose ps
 
 echo "================================================"
 echo "Deployment complete!"
