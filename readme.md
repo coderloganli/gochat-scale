@@ -20,7 +20,7 @@ This fork adds **production-ready multi-container deployment** to the original g
 make compose-dev
 
 # Or manually
-docker-compose -f docker-compose.yml -f deployments/docker-compose.dev.yml up
+docker compose -f docker-compose.yml -f deployments/docker-compose.dev.yml up
 
 # Visit the chat app
 http://localhost:8080
@@ -30,7 +30,7 @@ http://localhost:8080
 
 ```bash
 # Scale specific services
-docker-compose up --scale logic=3 --scale connect-ws=2 --scale task=2
+docker compose up --scale logic=3 --scale connect-ws=2 --scale task=2
 ```
 
 ### Production Deployment
