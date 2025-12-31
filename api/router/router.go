@@ -8,8 +8,10 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gochat/api/handler"
 	"gochat/api/rpc"
+	"gochat/pkg/middleware"
 	"gochat/proto"
 	"gochat/tools"
 	"net/http"
@@ -18,6 +20,8 @@ import (
 func Register() *gin.Engine {
 	r := gin.Default()
 	r.Use(CorsMiddleware())
+	r.Use(middleware.PrometheusMiddleware("api"))
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	initUserRouter(r)
 	initPushRouter(r)
 	r.NoRoute(func(c *gin.Context) {

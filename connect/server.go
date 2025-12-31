@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
+	"gochat/pkg/metrics"
 	"gochat/proto"
 	"gochat/tools"
 	"time"
@@ -73,6 +74,7 @@ func (s *Server) writePump(ch *Channel, c *Connect) {
 			}
 			logrus.Infof("message write body:%s", message.Body)
 			w.Write(message.Body)
+			metrics.MessagesTotal.WithLabelValues("connect", "sent").Inc()
 			if err := w.Close(); err != nil {
 				return
 			}
@@ -88,7 +90,15 @@ func (s *Server) writePump(ch *Channel, c *Connect) {
 }
 
 func (s *Server) readPump(ch *Channel, c *Connect) {
+	// Track active connection
+	connType := "websocket"
+	metrics.ConnectionsActive.WithLabelValues("connect", connType).Inc()
+	metrics.ConnectionsTotal.WithLabelValues("connect", connType, "success").Inc()
+
 	defer func() {
+		// Decrement active connection counter
+		metrics.ConnectionsActive.WithLabelValues("connect", connType).Dec()
+
 		logrus.Infof("start exec disConnect ...")
 		if ch.Room == nil || ch.userId == 0 {
 			logrus.Infof("roomId and userId eq 0")
@@ -124,6 +134,8 @@ func (s *Server) readPump(ch *Channel, c *Connect) {
 		if message == nil {
 			return
 		}
+		metrics.MessagesTotal.WithLabelValues("connect", "received").Inc()
+
 		var connReq *proto.ConnectRequest
 		logrus.Infof("get a message :%s", message)
 		if err := json.Unmarshal([]byte(message), &connReq); err != nil {

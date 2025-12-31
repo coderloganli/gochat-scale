@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"gochat/config"
+	"gochat/pkg/metrics"
 	_ "net/http/pprof"
 	"runtime"
 	"time"
@@ -57,6 +58,8 @@ func (c *Connect) Run() {
 		BroadcastSize:   512,
 	})
 	c.ServerId = fmt.Sprintf("%s-%s", "ws", uuid.New().String())
+	//init metrics server
+	metrics.StartMetricsServer(9092)
 	//init Connect layer rpc server ,task layer will call this
 	if err := c.InitConnectWebsocketRpcServer(); err != nil {
 		logrus.Panicf("InitConnectWebsocketRpcServer Fatal error: %s \n", err.Error())
@@ -103,6 +106,8 @@ func (c *Connect) RunTcp() {
 	//	http.ListenAndServe("0.0.0.0:9000", nil)
 	//}()
 	c.ServerId = fmt.Sprintf("%s-%s", "tcp", uuid.New().String())
+	//init metrics server
+	metrics.StartMetricsServer(9093)
 	//init Connect layer rpc server ,task layer will call this
 	if err := c.InitConnectTcpRpcServer(); err != nil {
 		logrus.Panicf("InitConnectWebsocketRpcServer Fatal error: %s \n", err.Error())

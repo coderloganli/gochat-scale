@@ -1,0 +1,51 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'gochat'
+    environment: 'dev'
+
+scrape_configs:
+  - job_name: 'gochat-api'
+    static_configs:
+      - targets: ['api:7070']
+        labels:
+          service: 'api'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'gochat-logic'
+    static_configs:
+      - targets: ['logic:9091']
+        labels:
+          service: 'logic'
+    scrape_interval: 10s
+
+  - job_name: 'gochat-connect-ws'
+    static_configs:
+      - targets: ['connect-ws:9092']
+        labels:
+          service: 'connect-ws'
+    scrape_interval: 10s
+
+  - job_name: 'gochat-connect-tcp'
+    static_configs:
+      - targets: ['connect-tcp:9093']
+        labels:
+          service: 'connect-tcp'
+    scrape_interval: 10s
+
+  - job_name: 'gochat-task'
+    static_configs:
+      - targets: ['task:9094']
+        labels:
+          service: 'task'
+    scrape_interval: 10s
+
+  - job_name: 'gochat-site'
+    static_configs:
+      - targets: ['site:8080']
+        labels:
+          service: 'site'
+    metrics_path: '/metrics'
+    scrape_interval: 10s

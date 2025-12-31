@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"gochat/api/rpc"
+	"gochat/pkg/metrics"
 	"gochat/proto"
 	"gochat/tools"
 )
@@ -29,10 +30,14 @@ func Login(c *gin.Context) {
 		Password: tools.Sha1(formLogin.Password),
 	}
 	code, authToken, msg := rpc.RpcLogicObj.Login(req)
+	status := "success"
 	if code == tools.CodeFail || authToken == "" {
+		status = "failure"
+		metrics.UserOperationsTotal.WithLabelValues("login", status).Inc()
 		tools.FailWithMsg(c, msg)
 		return
 	}
+	metrics.UserOperationsTotal.WithLabelValues("login", status).Inc()
 	tools.SuccessWithMsg(c, "login success", authToken)
 }
 
@@ -52,10 +57,14 @@ func Register(c *gin.Context) {
 		Password: tools.Sha1(formRegister.Password),
 	}
 	code, authToken, msg := rpc.RpcLogicObj.Register(req)
+	status := "success"
 	if code == tools.CodeFail || authToken == "" {
+		status = "failure"
+		metrics.UserOperationsTotal.WithLabelValues("register", status).Inc()
 		tools.FailWithMsg(c, msg)
 		return
 	}
+	metrics.UserOperationsTotal.WithLabelValues("register", status).Inc()
 	tools.SuccessWithMsg(c, "register success", authToken)
 }
 
@@ -100,9 +109,13 @@ func Logout(c *gin.Context) {
 		AuthToken: authToken,
 	}
 	code := rpc.RpcLogicObj.Logout(logoutReq)
+	status := "success"
 	if code == tools.CodeFail {
+		status = "failure"
+		metrics.UserOperationsTotal.WithLabelValues("logout", status).Inc()
 		tools.FailWithMsg(c, "logout fail!")
 		return
 	}
+	metrics.UserOperationsTotal.WithLabelValues("logout", status).Inc()
 	tools.SuccessWithMsg(c, "logout ok!", nil)
 }
