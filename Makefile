@@ -5,7 +5,7 @@
 HOST_IP ?= 127.0.0.1
 
 # Legacy build command (for backward compatibility)
-build: # make build TAG=1.18;make build TAG=latest,自定义版本号,构建自己机器可以运行的镜像(因为M1机器拉取提供的镜像架构不同,只能自己构建)
+build: # make build TAG=1.23;make build TAG=latest,自定义版本号,构建自己机器可以运行的镜像(因为M1机器拉取提供的镜像架构不同,只能自己构建)
 	cd ./docker && docker build -t lockgit/gochat:${TAG} .
 
 help:

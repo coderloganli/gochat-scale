@@ -45,7 +45,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: gochat:latest
     command: ["/app/gochat", "-module", "logic"]
     environment:
       - RUN_MODE=dev
@@ -69,7 +68,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: gochat:latest
     command: ["/app/gochat", "-module", "connect_websocket"]
     environment:
       - RUN_MODE=dev
@@ -96,7 +94,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: gochat:latest
     command: ["/app/gochat", "-module", "connect_tcp"]
     environment:
       - RUN_MODE=dev
@@ -124,7 +121,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: gochat:latest
     command: ["/app/gochat", "-module", "task"]
     environment:
       - RUN_MODE=dev
@@ -152,7 +148,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: gochat:latest
     command: ["/app/gochat", "-module", "api"]
     environment:
       - RUN_MODE=dev
@@ -178,7 +173,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: gochat:latest
     command: ["/app/gochat", "-module", "site"]
     environment:
       - RUN_MODE=dev
