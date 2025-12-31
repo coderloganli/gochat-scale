@@ -33,6 +33,9 @@ func (c *Connect) Run() {
 	//set the maximum number of CPUs that can be executing
 	runtime.GOMAXPROCS(connectConfig.ConnectBucket.CpuNum)
 
+	//init metrics server
+	metrics.StartMetricsServer(9092)
+
 	//init logic layer rpc client, call logic layer rpc server
 	if err := c.InitLogicRpcClient(); err != nil {
 		logrus.Panicf("InitLogicRpcClient err:%s", err.Error())
@@ -58,8 +61,6 @@ func (c *Connect) Run() {
 		BroadcastSize:   512,
 	})
 	c.ServerId = fmt.Sprintf("%s-%s", "ws", uuid.New().String())
-	//init metrics server
-	metrics.StartMetricsServer(9092)
 	//init Connect layer rpc server ,task layer will call this
 	if err := c.InitConnectWebsocketRpcServer(); err != nil {
 		logrus.Panicf("InitConnectWebsocketRpcServer Fatal error: %s \n", err.Error())
@@ -77,6 +78,9 @@ func (c *Connect) RunTcp() {
 
 	//set the maximum number of CPUs that can be executing
 	runtime.GOMAXPROCS(connectConfig.ConnectBucket.CpuNum)
+
+	//init metrics server
+	metrics.StartMetricsServer(9093)
 
 	//init logic layer rpc client, call logic layer rpc server
 	if err := c.InitLogicRpcClient(); err != nil {
@@ -106,8 +110,6 @@ func (c *Connect) RunTcp() {
 	//	http.ListenAndServe("0.0.0.0:9000", nil)
 	//}()
 	c.ServerId = fmt.Sprintf("%s-%s", "tcp", uuid.New().String())
-	//init metrics server
-	metrics.StartMetricsServer(9093)
 	//init Connect layer rpc server ,task layer will call this
 	if err := c.InitConnectTcpRpcServer(); err != nil {
 		logrus.Panicf("InitConnectWebsocketRpcServer Fatal error: %s \n", err.Error())

@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"gochat/config"
-	"gochat/pkg/metrics"
 	"gochat/proto"
 	"gochat/tools"
 	"strings"
@@ -165,17 +164,10 @@ func (task *Task) pushSingleToConnect(serverId string, userId int, msg []byte) {
 	if err != nil {
 		logrus.Infof("get rpc client err %v", err)
 	}
-
-	start := time.Now()
 	err = connectRpc.Call(context.Background(), "PushSingleMsg", pushMsgReq, reply)
-	duration := time.Since(start).Seconds()
-	status := "success"
 	if err != nil {
-		status = "error"
 		logrus.Infof("pushSingleToConnect Call err %v", err)
 	}
-	metrics.RPCClientRequestsTotal.WithLabelValues("task", "PushSingleMsg", status).Inc()
-	metrics.RPCClientDuration.WithLabelValues("task", "connect", "PushSingleMsg").Observe(duration)
 	logrus.Infof("reply %s", reply.Msg)
 }
 
@@ -193,15 +185,7 @@ func (task *Task) broadcastRoomToConnect(roomId int, msg []byte) {
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
 		logrus.Infof("broadcastRoomToConnect rpc  %v", rpc)
-		start := time.Now()
-		err := rpc.Call(context.Background(), "PushRoomMsg", pushRoomMsgReq, reply)
-		duration := time.Since(start).Seconds()
-		status := "success"
-		if err != nil {
-			status = "error"
-		}
-		metrics.RPCClientRequestsTotal.WithLabelValues("task", "PushRoomMsg", status).Inc()
-		metrics.RPCClientDuration.WithLabelValues("task", "connect", "PushRoomMsg").Observe(duration)
+		rpc.Call(context.Background(), "PushRoomMsg", pushRoomMsgReq, reply)
 		logrus.Infof("reply %s", reply.Msg)
 	}
 }
@@ -230,15 +214,7 @@ func (task *Task) broadcastRoomCountToConnect(roomId, count int) {
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
 		logrus.Infof("broadcastRoomCountToConnect rpc  %v", rpc)
-		start := time.Now()
-		err := rpc.Call(context.Background(), "PushRoomCount", pushRoomMsgReq, reply)
-		duration := time.Since(start).Seconds()
-		status := "success"
-		if err != nil {
-			status = "error"
-		}
-		metrics.RPCClientRequestsTotal.WithLabelValues("task", "PushRoomCount", status).Inc()
-		metrics.RPCClientDuration.WithLabelValues("task", "connect", "PushRoomCount").Observe(duration)
+		rpc.Call(context.Background(), "PushRoomCount", pushRoomMsgReq, reply)
 		logrus.Infof("reply %s", reply.Msg)
 	}
 }
@@ -269,15 +245,7 @@ func (task *Task) broadcastRoomInfoToConnect(roomId int, roomUserInfo map[string
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
 		logrus.Infof("broadcastRoomInfoToConnect rpc  %v", rpc)
-		start := time.Now()
-		err := rpc.Call(context.Background(), "PushRoomInfo", pushRoomMsgReq, reply)
-		duration := time.Since(start).Seconds()
-		status := "success"
-		if err != nil {
-			status = "error"
-		}
-		metrics.RPCClientRequestsTotal.WithLabelValues("task", "PushRoomInfo", status).Inc()
-		metrics.RPCClientDuration.WithLabelValues("task", "connect", "PushRoomInfo").Observe(duration)
+		rpc.Call(context.Background(), "PushRoomInfo", pushRoomMsgReq, reply)
 		logrus.Infof("broadcastRoomInfoToConnect rpc  reply %v", reply)
 	}
 }

@@ -8,7 +8,6 @@ package task
 import (
 	"github.com/sirupsen/logrus"
 	"gochat/config"
-	"gochat/pkg/metrics"
 	"runtime"
 )
 
@@ -23,8 +22,6 @@ func (task *Task) Run() {
 	//read config
 	taskConfig := config.Conf.Task
 	runtime.GOMAXPROCS(taskConfig.TaskBase.CpuNum)
-	//init metrics server
-	metrics.StartMetricsServer(9094)
 	//read from redis queue
 	if err := task.InitQueueRedisClient(); err != nil {
 		logrus.Panicf("task init publishRedisClient fail,err:%s", err.Error())

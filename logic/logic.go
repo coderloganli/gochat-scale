@@ -28,13 +28,14 @@ func (logic *Logic) Run() {
 
 	runtime.GOMAXPROCS(logicConfig.LogicBase.CpuNum)
 	logic.ServerId = fmt.Sprintf("logic-%s", uuid.New().String())
+
+	//init metrics server
+	metrics.StartMetricsServer(9091)
+
 	//init publish redis
 	if err := logic.InitPublishRedisClient(); err != nil {
 		logrus.Panicf("logic init publishRedisClient fail,err:%s", err.Error())
 	}
-
-	//init metrics server
-	metrics.StartMetricsServer(9091)
 
 	//init rpc server
 	if err := logic.InitRpcServer(); err != nil {

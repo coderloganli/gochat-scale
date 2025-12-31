@@ -7,10 +7,8 @@ package site
 
 import (
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"gochat/config"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -25,7 +23,7 @@ func New() *Site {
 
 func notFound(w http.ResponseWriter, r *http.Request) {
 	// Here you can send your custom 404 back.
-	data, _ := ioutil.ReadFile("./site/index.html")
+	data, _ := os.ReadFile("./site/index.html")
 	_, _ = fmt.Fprintf(w, string(data))
 	return
 }
@@ -47,12 +45,5 @@ func (s *Site) Run() {
 	siteConfig := config.Conf.Site
 	port := siteConfig.SiteBase.ListenPort
 	addr := fmt.Sprintf(":%d", port)
-
-	// Create a mux to handle both static files and metrics
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/", server(http.Dir("./site")))
-
-	logrus.Infof("Site server starting on %s", addr)
-	logrus.Fatal(http.ListenAndServe(addr, mux))
+	logrus.Fatal(http.ListenAndServe(addr, server(http.Dir("./site"))))
 }

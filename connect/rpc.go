@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"gochat/config"
-	"gochat/pkg/middleware"
 	"gochat/proto"
 	"gochat/tools"
 	"strings"
@@ -162,7 +161,6 @@ func (rpc *RpcConnectPush) PushRoomInfo(ctx context.Context, pushRoomMsgReq *pro
 
 func (c *Connect) createConnectWebsocktsRpcServer(network string, addr string) {
 	s := server.NewServer()
-	s.Plugins.Add(middleware.NewPrometheusRPCPlugin("connect-ws"))
 	addRegistryPlugin(s, network, addr)
 	//config.Conf.Connect.ConnectTcp.ServerId
 	//s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("%s", config.Conf.Connect.ConnectWebsocket.ServerId))
@@ -175,7 +173,6 @@ func (c *Connect) createConnectWebsocktsRpcServer(network string, addr string) {
 
 func (c *Connect) createConnectTcpRpcServer(network string, addr string) {
 	s := server.NewServer()
-	s.Plugins.Add(middleware.NewPrometheusRPCPlugin("connect-tcp"))
 	addRegistryPlugin(s, network, addr)
 	//s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("%s", config.Conf.Connect.ConnectTcp.ServerId))
 	s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("serverId=%s&serverType=tcp", c.ServerId))

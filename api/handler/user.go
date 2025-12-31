@@ -109,13 +109,9 @@ func Logout(c *gin.Context) {
 		AuthToken: authToken,
 	}
 	code := rpc.RpcLogicObj.Logout(logoutReq)
-	status := "success"
 	if code == tools.CodeFail {
-		status = "failure"
-		metrics.UserOperationsTotal.WithLabelValues("logout", status).Inc()
 		tools.FailWithMsg(c, "logout fail!")
 		return
 	}
-	metrics.UserOperationsTotal.WithLabelValues("logout", status).Inc()
 	tools.SuccessWithMsg(c, "logout ok!", nil)
 }

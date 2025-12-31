@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"gochat/api/rpc"
 	"gochat/config"
-	"gochat/pkg/metrics"
 	"gochat/proto"
 	"gochat/tools"
 	"strconv"
@@ -60,7 +59,6 @@ func Push(c *gin.Context) {
 		tools.FailWithMsg(c, rpcMsg)
 		return
 	}
-	metrics.RoomOperationsTotal.WithLabelValues("push_single").Inc()
 	tools.SuccessWithMsg(c, "ok", nil)
 	return
 }
@@ -98,7 +96,6 @@ func PushRoom(c *gin.Context) {
 		tools.FailWithMsg(c, "rpc push room msg fail!")
 		return
 	}
-	metrics.RoomOperationsTotal.WithLabelValues("push_room").Inc()
 	tools.SuccessWithMsg(c, "ok", msg)
 	return
 }
@@ -123,7 +120,6 @@ func Count(c *gin.Context) {
 		tools.FailWithMsg(c, "rpc get room count fail!")
 		return
 	}
-	metrics.RoomOperationsTotal.WithLabelValues("room_count").Inc()
 	tools.SuccessWithMsg(c, "ok", msg)
 	return
 }
@@ -148,7 +144,6 @@ func GetRoomInfo(c *gin.Context) {
 		tools.FailWithMsg(c, "rpc get room info fail!")
 		return
 	}
-	metrics.RoomOperationsTotal.WithLabelValues("room_info").Inc()
 	tools.SuccessWithMsg(c, "ok", msg)
 	return
 }
