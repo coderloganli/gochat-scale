@@ -19,7 +19,7 @@ RUN CGO_ENABLED=1 GOOS=linux CGO_CFLAGS="-g -O2 -Wno-return-local-addr" \
     go build -tags=etcd -ldflags="-w -s" -o gochat main.go
 
 # Stage 2: Runtime - Minimal runtime image
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     sqlite3 \
-    netcat \
+    netcat-openbsd \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
