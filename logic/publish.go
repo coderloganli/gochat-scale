@@ -15,6 +15,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/smallnest/rpcx/server"
 	"gochat/config"
+	"gochat/pkg/middleware"
+	gometrics "gochat/pkg/metrics"
 	"gochat/proto"
 	"gochat/tools"
 	"strings"
@@ -31,9 +33,13 @@ func (logic *Logic) InitPublishRedisClient() (err error) {
 		Db:       config.Conf.Common.CommonRedis.Db,
 	}
 	RedisClient = tools.GetRedisInstance(redisOpt)
-	if pong, err := RedisClient.Ping().Result(); err != nil {
+	pong, err := RedisClient.Ping().Result()
+	status := "success"
+	if err != nil {
+		status = "error"
 		logrus.Infof("RedisCli Ping Result pong: %s,  err: %s", pong, err)
 	}
+	gometrics.RedisOperationsTotal.WithLabelValues("logic", "PING", status).Inc()
 	//this can change use another redis save session data
 	RedisSessClient = RedisClient
 	return err
@@ -55,6 +61,7 @@ func (logic *Logic) InitRpcServer() (err error) {
 
 func (logic *Logic) createRpcServer(network string, addr string) {
 	s := server.NewServer()
+	s.Plugins.Add(middleware.NewPrometheusRPCPlugin("logic"))
 	logic.addRegistryPlugin(s, network, addr)
 	// serverId must be unique
 	//err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathLogic, new(RpcLogic), fmt.Sprintf("%s", config.Conf.Logic.LogicBase.ServerId))
@@ -96,11 +103,14 @@ func (logic *Logic) RedisPublishChannel(serverId string, toUserId int, msg []byt
 		return err
 	}
 	redisChannel := config.QueueName
-	if err := RedisClient.LPush(redisChannel, redisMsgStr).Err(); err != nil {
+	err = RedisClient.LPush(redisChannel, redisMsgStr).Err()
+	status := "success"
+	if err != nil {
+		status = "error"
 		logrus.Errorf("logic,lpush err:%s", err.Error())
-		return err
 	}
-	return
+	gometrics.RedisOperationsTotal.WithLabelValues("logic", "LPUSH", status).Inc()
+	return err
 }
 
 func (logic *Logic) RedisPublishRoomInfo(roomId int, count int, RoomUserInfo map[string]string, msg []byte) (err error) {
@@ -117,11 +127,13 @@ func (logic *Logic) RedisPublishRoomInfo(roomId int, count int, RoomUserInfo map
 		return
 	}
 	err = RedisClient.LPush(config.QueueName, redisMsgByte).Err()
+	status := "success"
 	if err != nil {
+		status = "error"
 		logrus.Errorf("logic,RedisPublishRoomInfo redisMsg error : %s", err.Error())
-		return
 	}
-	return
+	gometrics.RedisOperationsTotal.WithLabelValues("logic", "LPUSH", status).Inc()
+	return err
 }
 
 func (logic *Logic) RedisPushRoomCount(roomId int, count int) (err error) {
@@ -136,11 +148,13 @@ func (logic *Logic) RedisPushRoomCount(roomId int, count int) (err error) {
 		return
 	}
 	err = RedisClient.LPush(config.QueueName, redisMsgByte).Err()
+	status := "success"
 	if err != nil {
+		status = "error"
 		logrus.Errorf("logic,RedisPushRoomCount redisMsg error : %s", err.Error())
-		return
 	}
-	return
+	gometrics.RedisOperationsTotal.WithLabelValues("logic", "LPUSH", status).Inc()
+	return err
 }
 
 func (logic *Logic) RedisPushRoomInfo(roomId int, count int, roomUserInfo map[string]string) (err error) {
@@ -156,11 +170,13 @@ func (logic *Logic) RedisPushRoomInfo(roomId int, count int, roomUserInfo map[st
 		return
 	}
 	err = RedisClient.LPush(config.QueueName, redisMsgByte).Err()
+	status := "success"
 	if err != nil {
+		status = "error"
 		logrus.Errorf("logic,RedisPushRoomInfo redisMsg error : %s", err.Error())
-		return
 	}
-	return
+	gometrics.RedisOperationsTotal.WithLabelValues("logic", "LPUSH", status).Inc()
+	return err
 }
 
 func (logic *Logic) getRoomUserKey(authKey string) string {

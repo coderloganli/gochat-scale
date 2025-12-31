@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"gochat/config"
+	"gochat/pkg/metrics"
 	"runtime"
 )
 
@@ -31,6 +32,9 @@ func (logic *Logic) Run() {
 	if err := logic.InitPublishRedisClient(); err != nil {
 		logrus.Panicf("logic init publishRedisClient fail,err:%s", err.Error())
 	}
+
+	//init metrics server
+	metrics.StartMetricsServer(9091)
 
 	//init rpc server
 	if err := logic.InitRpcServer(); err != nil {
