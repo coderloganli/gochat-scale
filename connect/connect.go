@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"gochat/config"
+	"gochat/pkg/metrics"
 	_ "net/http/pprof"
 	"runtime"
 	"time"
@@ -31,6 +32,9 @@ func (c *Connect) Run() {
 
 	//set the maximum number of CPUs that can be executing
 	runtime.GOMAXPROCS(connectConfig.ConnectBucket.CpuNum)
+
+	//init metrics server
+	metrics.StartMetricsServer(9092)
 
 	//init logic layer rpc client, call logic layer rpc server
 	if err := c.InitLogicRpcClient(); err != nil {
@@ -74,6 +78,9 @@ func (c *Connect) RunTcp() {
 
 	//set the maximum number of CPUs that can be executing
 	runtime.GOMAXPROCS(connectConfig.ConnectBucket.CpuNum)
+
+	//init metrics server
+	metrics.StartMetricsServer(9093)
 
 	//init logic layer rpc client, call logic layer rpc server
 	if err := c.InitLogicRpcClient(); err != nil {

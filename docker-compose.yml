@@ -48,6 +48,8 @@ services:
     command: ["/app/gochat", "-module", "logic"]
     environment:
       - RUN_MODE=dev
+    ports:
+      - "9091:9091"
     depends_on:
       etcd:
         condition: service_healthy
@@ -71,6 +73,7 @@ services:
       - RUN_MODE=dev
     ports:
       - "7000:7000"
+      - "9092:9092"
     depends_on:
       etcd:
         condition: service_healthy
@@ -97,6 +100,7 @@ services:
     ports:
       - "7001:7001"
       - "7002:7002"
+      - "9093:9093"
     depends_on:
       etcd:
         condition: service_healthy
@@ -120,6 +124,8 @@ services:
     command: ["/app/gochat", "-module", "task"]
     environment:
       - RUN_MODE=dev
+    ports:
+      - "9094:9094"
     depends_on:
       etcd:
         condition: service_healthy
@@ -186,6 +192,30 @@ services:
       retries: 3
       start_period: 30s
 
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: gochat-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - gochat-network
+    depends_on:
+      - api
+      - logic
+      - connect-ws
+      - connect-tcp
+      - task
+    restart: unless-stopped
+
 networks:
   gochat-network:
     driver: bridge
@@ -197,4 +227,6 @@ volumes:
   etcd-data:
     driver: local
   redis-data:
+    driver: local
+  prometheus-data:
     driver: local

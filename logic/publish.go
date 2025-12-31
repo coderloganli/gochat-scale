@@ -15,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/smallnest/rpcx/server"
 	"gochat/config"
+	"gochat/pkg/middleware"
 	"gochat/proto"
 	"gochat/tools"
 	"strings"
@@ -55,6 +56,7 @@ func (logic *Logic) InitRpcServer() (err error) {
 
 func (logic *Logic) createRpcServer(network string, addr string) {
 	s := server.NewServer()
+	s.Plugins.Add(middleware.NewPrometheusRPCPlugin("logic"))
 	logic.addRegistryPlugin(s, network, addr)
 	// serverId must be unique
 	//err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathLogic, new(RpcLogic), fmt.Sprintf("%s", config.Conf.Logic.LogicBase.ServerId))
