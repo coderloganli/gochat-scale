@@ -4,7 +4,8 @@ on:
   push:
     branches: [master, dev, staging]
   pull_request:
-    branches: [master]
+    # Run on PRs targeting any branch
+    branches: ['**']
 
 env:
   DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/gochat
