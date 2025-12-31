@@ -15,7 +15,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/smallnest/rpcx/server"
 	"gochat/config"
-	promMetrics "gochat/pkg/metrics"
 	"gochat/pkg/middleware"
 	"gochat/proto"
 	"gochat/tools"
