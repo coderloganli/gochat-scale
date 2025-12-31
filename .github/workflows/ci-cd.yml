@@ -98,7 +98,12 @@ jobs:
         id: meta
         run: |
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+          # Sanitize branch/ref name for Docker tag (replace slashes with hyphens)
+          BRANCH_RAW="${GITHUB_REF#refs/heads/}"
+          BRANCH_RAW="${BRANCH_RAW#refs/pull/}"
+          BRANCH_RAW="${BRANCH_RAW#refs/tags/}"
+          BRANCH_CLEAN=$(echo "$BRANCH_RAW" | sed 's/\//-/g')
+          echo "branch=$BRANCH_CLEAN" >> $GITHUB_OUTPUT
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
@@ -141,7 +146,12 @@ jobs:
         id: meta
         run: |
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+          # Sanitize branch/ref name for Docker tag (replace slashes with hyphens)
+          BRANCH_RAW="${GITHUB_REF#refs/heads/}"
+          BRANCH_RAW="${BRANCH_RAW#refs/pull/}"
+          BRANCH_RAW="${BRANCH_RAW#refs/tags/}"
+          BRANCH_CLEAN=$(echo "$BRANCH_RAW" | sed 's/\//-/g')
+          echo "branch=$BRANCH_CLEAN" >> $GITHUB_OUTPUT
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
