@@ -216,6 +216,25 @@ services:
       - task
     restart: unless-stopped
 
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: gochat-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./deployments/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deployments/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - gochat-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 networks:
   gochat-network:
     driver: bridge
@@ -229,4 +248,6 @@ volumes:
   redis-data:
     driver: local
   prometheus-data:
+    driver: local
+  grafana-data:
     driver: local
