@@ -1,0 +1,148 @@
+# Load Testing Environment - Independent Docker Compose
+# Usage:
+#   docker compose -f docker-compose.yml -f loadtest/docker-compose.loadtest.yml up -d
+#   docker compose -f docker-compose.yml -f loadtest/docker-compose.loadtest.yml run k6 run /scripts/full-system.js
+
+services:
+  # Override infrastructure services with resource limits
+  etcd:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Override application services with resource limits
+  logic:
+    environment:
+      - RUN_MODE=dev
+      - LOG_LEVEL=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  connect-ws:
+    environment:
+      - RUN_MODE=dev
+      - LOG_LEVEL=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  connect-tcp:
+    environment:
+      - RUN_MODE=dev
+      - LOG_LEVEL=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  task:
+    environment:
+      - RUN_MODE=dev
+      - LOG_LEVEL=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  api:
+    environment:
+      - RUN_MODE=dev
+      - LOG_LEVEL=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  site:
+    environment:
+      - RUN_MODE=dev
+      - LOG_LEVEL=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # k6 Load Testing Container
+  k6:
+    image: grafana/k6:0.49.0
+    container_name: gochat-k6
+    volumes:
+      - ./loadtest/scripts:/scripts:ro
+      - ./loadtest/reports:/reports
+    environment:
+      - K6_OUT=json=/reports/results.json
+      - API_BASE_URL=http://api:7070
+      - WS_URL=ws://connect-ws:7000/ws
+    networks:
+      - gochat-network
+    working_dir: /scripts
+    profiles:
+      - loadtest
+
+  # Grafana for load test visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: gochat-grafana-loadtest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - grafana-loadtest-data:/var/lib/grafana
+      - ./loadtest/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./loadtest/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - gochat-network
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+volumes:
+  grafana-loadtest-data:
+    driver: local
