@@ -1,9 +1,9 @@
-// User Register Endpoint Load Test
-// Tests POST /user/register endpoint
+// Push GetRoomInfo Endpoint Load Test
+// Tests POST /push/getRoomInfo endpoint
 //
 // Usage:
-//   K6_VUS=100 K6_DURATION=5m k6 run scenarios/user-register.js
-//   K6_START_VUS=10 K6_END_VUS=200 K6_STEP_VUS=20 k6 run scenarios/user-register.js
+//   K6_VUS=100 K6_DURATION=5m k6 run scenarios/push-roominfo.js
+//   K6_START_VUS=10 K6_END_VUS=200 K6_STEP_VUS=20 k6 run scenarios/push-roominfo.js
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
@@ -11,6 +11,7 @@ import { Rate, Trend, Counter } from 'k6/metrics';
 import { htmlReport } from '../lib/vendor/k6-reporter.js';
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 import { buildCapacityStages, getCapacityConfig, getFixedConfig, baseUrl, printConfig } from '../lib/config.js';
+import { createTestUsers } from '../lib/auth.js';
 import {
   buildRampingStepPlan,
   buildFixedStepPlan,
@@ -21,8 +22,8 @@ import {
 } from '../lib/step-report.js';
 
 // Custom metrics
-var registerSuccessRate = new Rate('register_success_rate');
-var registerDuration = new Trend('register_duration');
+var roomInfoSuccessRate = new Rate('roominfo_success_rate');
+var roomInfoDuration = new Trend('roominfo_duration');
 var steadyHttpDuration = new Trend('steady_http_duration');
 var steadyHttpRequests = new Counter('steady_http_requests');
 var steadyHttpErrors = new Counter('steady_http_errors');
@@ -71,27 +72,31 @@ if (useFixedVus) {
 
 export var options = {
   scenarios: {
-    register_test: scenario,
+    roominfo_test: scenario,
   },
   thresholds: Object.assign(
     {
       http_req_duration: ['p(95)<500'],
       http_req_failed: ['rate<0.05'],
-      register_success_rate: ['rate>0.90'],
+      roominfo_success_rate: ['rate>0.95'],
     },
     stepThresholds
   ),
   summaryTrendStats: ['avg', 'p(90)', 'p(95)', 'p(99)', 'min', 'max'],
 };
 
-// Setup
+// Setup: Create test users
 export function setup() {
   printConfig();
-  return {};
+
+  var userCount = useFixedVus ? fixedConfig.vus : parseInt(__ENV.K6_END_VUS) || 100;
+  var users = createTestUsers(Math.min(userCount, 100), 'roominfo_test');
+
+  return { users: users };
 }
 
 // Main test function
-export default function () {
+export default function (data) {
   var stepInfo = stepTracker.getStepInfo();
   var requestTags = stepTracker.getRequestTags(stepInfo);
   var steadyTags = stepTracker.getSteadyTags(stepInfo);
@@ -100,51 +105,61 @@ export default function () {
     steadyIters.add(1, steadyTags);
   }
 
-  // Each registration creates a unique user
-  var timestamp = Date.now();
+  var userIndex = __VU % Math.max(data.users.length, 1);
+  var user = data.users.length > 0 ? data.users[userIndex] : null;
+
+  if (!user || !user.authToken) {
+    roomInfoSuccessRate.add(false);
+    sleep(0.5);
+    return;
+  }
+
+  // Random room ID (1-10)
+  var roomId = Math.floor(Math.random() * 10) + 1;
+
   var payload = JSON.stringify({
-    userName: 'register_' + __VU + '_' + __ITER + '_' + timestamp,
-    passWord: 'loadtest123',
+    authToken: user.authToken,
+    roomId: roomId,
   });
 
   var params = {
     headers: { 'Content-Type': 'application/json' },
-    tags: Object.assign({ name: 'register' }, requestTags),
+    tags: Object.assign({ name: 'getRoomInfo' }, requestTags),
   };
 
   var startTime = Date.now();
-  var res = http.post(baseUrl + '/user/register', payload, params);
+  var res = http.post(baseUrl + '/push/getRoomInfo', payload, params);
   var duration = Math.max(0, Date.now() - startTime);
 
-  registerDuration.add(duration);
+  roomInfoDuration.add(duration);
   recordHttpSteadyMetrics(res, duration, steadyTags, steadyMetrics);
 
   var success = check(res, {
     'status is 200': function (r) { return r.status === 200; },
-    'register successful': function (r) {
+    'getRoomInfo successful': function (r) {
       try {
         var body = JSON.parse(r.body);
-        return body.code === 0 && body.data;
+        return body.code === 0;
       } catch (e) {
         return false;
       }
     },
   });
 
-  registerSuccessRate.add(success);
+  roomInfoSuccessRate.add(success);
 
   sleep(0.5 + Math.random() * 0.5);
 }
 
 // Generate reports
 export function handleSummary(data) {
-  var stepReport = buildHttpStepReport(data, stepPlan, { title: 'User Register Step Report' });
+  var stepReport = buildHttpStepReport(data, stepPlan, { title: 'Push GetRoomInfo Step Report' });
 
   return {
-    '/reports/user-register.html': stepReport.html,
-    '/reports/user-register-steps.json': JSON.stringify(stepReport.json, null, 2),
-    '/reports/user-register-full.html': htmlReport(data),
-    '/reports/user-register.json': JSON.stringify(data, null, 2),
+    '/reports/push-roominfo.html': stepReport.html,
+    '/reports/push-roominfo-steps.json': JSON.stringify(stepReport.json, null, 2),
+    '/reports/push-roominfo-full.html': htmlReport(data),
+    '/reports/push-roominfo.json': JSON.stringify(data, null, 2),
     stdout: textSummary(data, { indent: ' ', enableColors: true }),
   };
 }

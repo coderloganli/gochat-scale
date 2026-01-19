@@ -7,20 +7,52 @@
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { Rate, Trend } from 'k6/metrics';
+import { Rate, Trend, Counter } from 'k6/metrics';
 import { htmlReport } from '../lib/vendor/k6-reporter.js';
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
-import { buildStages, getFixedConfig, baseUrl, printConfig } from '../lib/config.js';
+import { buildCapacityStages, getCapacityConfig, getFixedConfig, baseUrl, printConfig } from '../lib/config.js';
 import { createTestUsers } from '../lib/auth.js';
+import {
+  buildRampingStepPlan,
+  buildFixedStepPlan,
+  createStepTracker,
+  recordHttpSteadyMetrics,
+  buildHttpStepReport,
+  buildHttpStepThresholds,
+} from '../lib/step-report.js';
 
 // Custom metrics
 var pushRoomSuccessRate = new Rate('push_room_success_rate');
 var pushRoomDuration = new Trend('push_room_duration');
+var steadyHttpDuration = new Trend('steady_http_duration');
+var steadyHttpRequests = new Counter('steady_http_requests');
+var steadyHttpErrors = new Counter('steady_http_errors');
+var steadyHttp4xx = new Counter('steady_http_4xx');
+var steadyHttp5xx = new Counter('steady_http_5xx');
+var steadyHttp429 = new Counter('steady_http_429');
+var steadyHttpTimeout = new Counter('steady_http_timeout');
+var steadyIters = new Counter('steady_iters');
+
+var steadyMetrics = {
+  duration: steadyHttpDuration,
+  requests: steadyHttpRequests,
+  errors: steadyHttpErrors,
+  http4xx: steadyHttp4xx,
+  http5xx: steadyHttp5xx,
+  http429: steadyHttp429,
+  timeouts: steadyHttpTimeout,
+};
 
 // Build options
 var useFixedVus = __ENV.K6_VUS !== undefined && __ENV.K6_VUS !== '';
 var fixedConfig = getFixedConfig();
-var stages = buildStages();
+var capacityConfig = getCapacityConfig();
+var stages = buildCapacityStages();
+var stepPlan = useFixedVus
+  ? buildFixedStepPlan(fixedConfig.duration, capacityConfig.warmupDuration, fixedConfig.vus)
+  : buildRampingStepPlan(capacityConfig);
+var stepTracker = createStepTracker(stepPlan);
+var stepThresholds = buildHttpStepThresholds(stepPlan);
 
 var scenario = {};
 if (useFixedVus) {
@@ -42,11 +74,15 @@ export var options = {
   scenarios: {
     push_room_test: scenario,
   },
-  thresholds: {
-    http_req_duration: ['p(95)<1000'],
-    http_req_failed: ['rate<0.05'],
-    push_room_success_rate: ['rate>0.90'],
-  },
+  thresholds: Object.assign(
+    {
+      http_req_duration: ['p(95)<1000'],
+      http_req_failed: ['rate<0.05'],
+      push_room_success_rate: ['rate>0.90'],
+    },
+    stepThresholds
+  ),
+  summaryTrendStats: ['avg', 'p(90)', 'p(95)', 'p(99)', 'min', 'max'],
 };
 
 // Setup: Create test users
@@ -61,6 +97,14 @@ export function setup() {
 
 // Main test function
 export default function (data) {
+  var stepInfo = stepTracker.getStepInfo();
+  var requestTags = stepTracker.getRequestTags(stepInfo);
+  var steadyTags = stepTracker.getSteadyTags(stepInfo);
+
+  if (steadyTags) {
+    steadyIters.add(1, steadyTags);
+  }
+
   if (data.users.length === 0) {
     sleep(1);
     return;
@@ -78,14 +122,15 @@ export default function (data) {
 
   var params = {
     headers: { 'Content-Type': 'application/json' },
-    tags: { name: 'pushRoom' },
+    tags: Object.assign({ name: 'pushRoom' }, requestTags),
   };
 
   var startTime = Date.now();
   var res = http.post(baseUrl + '/push/pushRoom', payload, params);
-  var duration = Date.now() - startTime;
+  var duration = Math.max(0, Date.now() - startTime);
 
   pushRoomDuration.add(duration);
+  recordHttpSteadyMetrics(res, duration, steadyTags, steadyMetrics);
 
   var success = check(res, {
     'status is 200': function (r) { return r.status === 200; },
@@ -106,8 +151,12 @@ export default function (data) {
 
 // Generate reports
 export function handleSummary(data) {
+  var stepReport = buildHttpStepReport(data, stepPlan, { title: 'Push Room Step Report' });
+
   return {
-    '/reports/push-room.html': htmlReport(data),
+    '/reports/push-room.html': stepReport.html,
+    '/reports/push-room-steps.json': JSON.stringify(stepReport.json, null, 2),
+    '/reports/push-room-full.html': htmlReport(data),
     '/reports/push-room.json': JSON.stringify(data, null, 2),
     stdout: textSummary(data, { indent: ' ', enableColors: true }),
   };

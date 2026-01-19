@@ -1,6 +1,6 @@
 
 .PHONY: build help compose-dev compose-dev-build compose-dev-down compose-prod compose-prod-build compose-prod-down compose-scale compose-logs compose-ps clean test-infra test test-coverage test-unit test-integration fmt fmt-check vet lint build-binary build-image \
-	loadtest-help loadtest-setup loadtest-start loadtest-stop loadtest-full loadtest-capacity loadtest-login loadtest-register loadtest-websocket loadtest-push loadtest-pushroom loadtest-smoke loadtest-custom loadtest-report loadtest-grafana loadtest-clean
+	loadtest-help loadtest-setup loadtest-start loadtest-stop loadtest-full loadtest-capacity loadtest-login loadtest-register loadtest-logout loadtest-checkauth loadtest-websocket loadtest-push loadtest-pushroom loadtest-count loadtest-roominfo loadtest-smoke loadtest-custom loadtest-report loadtest-grafana loadtest-clean
 
 # Default HOST_IP for development
 HOST_IP ?= 127.0.0.1
@@ -182,6 +182,7 @@ K6_END_VUS ?= 100
 K6_STEP_VUS ?= 10
 K6_STEP_DURATION ?= 1m
 K6_RAMP_DURATION ?= 30s
+K6_WARMUP_DURATION ?= 20s
 LOADTEST_SCRIPT ?= full-system.js
 
 # Compose files for load testing
@@ -194,7 +195,8 @@ K6_ENV_VARS = \
 	-e K6_END_VUS=$(K6_END_VUS) \
 	-e K6_STEP_VUS=$(K6_STEP_VUS) \
 	-e K6_STEP_DURATION=$(K6_STEP_DURATION) \
-	-e K6_RAMP_DURATION=$(K6_RAMP_DURATION)
+	-e K6_RAMP_DURATION=$(K6_RAMP_DURATION) \
+	-e K6_WARMUP_DURATION=$(K6_WARMUP_DURATION)
 
 ifneq ($(strip $(K6_VUS)),)
 	K6_ENV_VARS += -e K6_VUS=$(K6_VUS)
@@ -218,9 +220,13 @@ loadtest-help:
 	@echo "  loadtest-capacity   - Run step-based capacity baseline test"
 	@echo "  loadtest-login      - Test /user/login endpoint only"
 	@echo "  loadtest-register   - Test /user/register endpoint only"
+	@echo "  loadtest-logout     - Test /user/logout endpoint only"
+	@echo "  loadtest-checkauth  - Test /user/checkAuth endpoint only"
 	@echo "  loadtest-websocket  - Test WebSocket connections only"
 	@echo "  loadtest-push       - Test /push/push endpoint only"
 	@echo "  loadtest-pushroom   - Test /push/pushRoom endpoint only"
+	@echo "  loadtest-count      - Test /push/count endpoint only"
+	@echo "  loadtest-roominfo   - Test /push/getRoomInfo endpoint only"
 	@echo "  loadtest-smoke      - Quick 30s smoke test (5 VUs)"
 	@echo "  loadtest-custom     - Run custom script (LOADTEST_SCRIPT=file.js)"
 	@echo ""
@@ -236,6 +242,7 @@ loadtest-help:
 	@echo "  K6_STEP_VUS         - VU increment per step (default: 10)"
 	@echo "  K6_STEP_DURATION    - Duration at each step (default: 1m)"
 	@echo "  K6_RAMP_DURATION    - Ramp duration between steps (default: 30s)"
+	@echo "  K6_WARMUP_DURATION  - Warm-up per step (excluded from stats, default: 20s)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make loadtest-full K6_VUS=200 K6_DURATION=10m"
@@ -346,6 +353,38 @@ loadtest-pushroom: loadtest-start
 		$(K6_ENV_VARS) \
 		k6 run /scripts/scenarios/push-room.js
 	@echo "Test complete. Report: loadtest/reports/push-room.html"
+
+# Run logout endpoint test only
+loadtest-logout: loadtest-start
+	@echo "Running logout endpoint load test..."
+	$(LOADTEST_COMPOSE) run --rm \
+		$(K6_ENV_VARS) \
+		k6 run /scripts/scenarios/user-logout.js
+	@echo "Test complete. Report: loadtest/reports/user-logout.html"
+
+# Run checkAuth endpoint test only
+loadtest-checkauth: loadtest-start
+	@echo "Running checkAuth endpoint load test..."
+	$(LOADTEST_COMPOSE) run --rm \
+		$(K6_ENV_VARS) \
+		k6 run /scripts/scenarios/user-checkauth.js
+	@echo "Test complete. Report: loadtest/reports/user-checkauth.html"
+
+# Run push count endpoint test only
+loadtest-count: loadtest-start
+	@echo "Running push count endpoint load test..."
+	$(LOADTEST_COMPOSE) run --rm \
+		$(K6_ENV_VARS) \
+		k6 run /scripts/scenarios/push-count.js
+	@echo "Test complete. Report: loadtest/reports/push-count.html"
+
+# Run room info endpoint test only
+loadtest-roominfo: loadtest-start
+	@echo "Running room info endpoint load test..."
+	$(LOADTEST_COMPOSE) run --rm \
+		$(K6_ENV_VARS) \
+		k6 run /scripts/scenarios/push-roominfo.js
+	@echo "Test complete. Report: loadtest/reports/push-roominfo.html"
 
 # Run quick smoke test
 loadtest-smoke: loadtest-start
