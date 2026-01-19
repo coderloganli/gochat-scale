@@ -74,14 +74,52 @@ jobs:
         run: |
           docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml up -d --build
           echo "Waiting for services to be healthy..."
-          sleep 30
+
+          # Wait for etcd
+          echo "Waiting for etcd..."
+          timeout 60 bash -c 'until docker exec gochat-etcd etcdctl endpoint health 2>/dev/null; do sleep 2; done' || true
+
+          # Wait for redis
+          echo "Waiting for redis..."
+          timeout 60 bash -c 'until docker exec gochat-redis redis-cli ping 2>/dev/null | grep -q PONG; do sleep 2; done' || true
+
+          # Wait for API service
+          echo "Waiting for API service..."
+          timeout 120 bash -c 'until curl -sf http://localhost:7070/ 2>/dev/null; do sleep 5; done' || true
+
+          # Additional wait for service stabilization
+          echo "Waiting for services to stabilize..."
+          sleep 10
+
+          echo "Services should be ready"
 
       - name: Run integration tests
-        run: go test -v ./...
+        run: |
+          go test -v -race -timeout 10m ./tests/integration/...
+        env:
+          TEST_API_URL: http://localhost:7070
+          TEST_WS_URL: ws://localhost:7000/ws
+          TEST_TCP_ADDR: localhost:7001
+          TEST_REDIS_ADDR: localhost:6379
+          TEST_ETCD_ADDR: localhost:2379
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          echo "=== Docker Compose Logs ===" > service-logs.txt
+          docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml logs --no-color >> service-logs.txt 2>&1
+
+      - name: Upload service logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-logs
+          path: service-logs.txt
+          retention-days: 7
 
       - name: Stop services
         if: always()
-        run: docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down
+        run: docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down -v
 
   build:
     name: Build Docker Image

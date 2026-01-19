@@ -162,11 +162,13 @@ func (task *Task) pushSingleToConnect(serverId string, userId int, msg []byte) {
 	reply := &proto.SuccessReply{}
 	connectRpc, err := RClient.GetRpcClientByServerId(serverId)
 	if err != nil {
-		logrus.Infof("get rpc client err %v", err)
+		logrus.Errorf("get rpc client err %v", err)
+		return
 	}
 	err = connectRpc.Call(context.Background(), "PushSingleMsg", pushMsgReq, reply)
 	if err != nil {
-		logrus.Infof("pushSingleToConnect Call err %v", err)
+		logrus.Errorf("pushSingleToConnect Call err %v", err)
+		return
 	}
 	logrus.Infof("reply %s", reply.Msg)
 }

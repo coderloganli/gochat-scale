@@ -1,4 +1,5 @@
 
+
 .PHONY: build help compose-dev compose-dev-build compose-dev-down compose-prod compose-prod-build compose-prod-down compose-scale compose-logs compose-ps clean test-infra test test-coverage test-unit test-integration fmt fmt-check vet lint build-binary build-image \
 	loadtest-help loadtest-setup loadtest-start loadtest-stop loadtest-full loadtest-capacity loadtest-login loadtest-register loadtest-logout loadtest-checkauth loadtest-websocket loadtest-push loadtest-pushroom loadtest-count loadtest-roominfo loadtest-smoke loadtest-custom loadtest-report loadtest-grafana loadtest-clean
 
@@ -27,14 +28,15 @@ help:
 	@echo "  clean                - Remove all containers, volumes, and images"
 	@echo ""
 	@echo "Testing & Quality:"
-	@echo "  test                 - Run all tests"
-	@echo "  test-coverage        - Run tests with coverage report"
-	@echo "  test-unit            - Run unit tests only"
-	@echo "  test-integration     - Run integration tests with Docker"
-	@echo "  fmt                  - Format code with go fmt"
-	@echo "  fmt-check            - Check if code is formatted"
-	@echo "  vet                  - Run go vet"
-	@echo "  lint                 - Run golangci-lint"
+	@echo "  test                   - Run all tests"
+	@echo "  test-coverage          - Run tests with coverage report"
+	@echo "  test-unit              - Run unit tests only"
+	@echo "  test-integration       - Run integration tests with Docker (starts services)"
+	@echo "  test-integration-quick - Run integration tests (services must be running)"
+	@echo "  fmt                    - Format code with go fmt"
+	@echo "  fmt-check              - Check if code is formatted"
+	@echo "  vet                    - Run go vet"
+	@echo "  lint                   - Run golangci-lint"
 	@echo ""
 	@echo "Building:"
 	@echo "  build-binary         - Build gochat binary"
@@ -138,9 +140,19 @@ test-integration:
 	@echo "Waiting for services to be healthy..."
 	@sleep 30
 	@echo "Running integration tests from host..."
-	go test -v ./... || (docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down && exit 1)
+	TEST_API_URL=http://localhost:7070 \
+	TEST_WS_URL=ws://localhost:7000/ws \
+	TEST_REDIS_ADDR=localhost:6379 \
+	go test -v -race -timeout 10m ./tests/integration/... || (docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down && exit 1)
 	@echo "Stopping services..."
 	docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down
+
+test-integration-quick:
+	@echo "Running integration tests (assumes services are already running)..."
+	TEST_API_URL=http://localhost:7070 \
+	TEST_WS_URL=ws://localhost:7000/ws \
+	TEST_REDIS_ADDR=localhost:6379 \
+	go test -v -race -timeout 10m ./tests/integration/...
 
 # Code quality targets
 fmt:
