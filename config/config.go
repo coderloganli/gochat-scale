@@ -21,7 +21,6 @@ const (
 	SuccessReplyCode      = 0
 	FailReplyCode         = 1
 	SuccessReplyMsg       = "success"
-	QueueName             = "gochat_queue"
 	RedisBaseValidTime    = 86400
 	RedisPrefix           = "gochat_"
 	RedisRoomPrefix       = "gochat_room_"
@@ -32,6 +31,17 @@ const (
 	OpRoomCountSend       = 4 // get online user count
 	OpRoomInfoSend        = 5 // send info to room
 	OpBuildTcpConn        = 6 // build tcp conn
+)
+
+const (
+	RabbitMQExchange     = "gochat.direct"
+	RabbitMQQueueSingle  = "gochat.single"
+	RabbitMQQueueRoom    = "gochat.room"
+	RabbitMQQueueMeta    = "gochat.meta"
+	RoutingKeySingleSend = "single.send"
+	RoutingKeyRoomSend   = "room.send"
+	RoutingKeyRoomCount  = "room.count"
+	RoutingKeyRoomInfo   = "room.info"
 )
 
 type Config struct {
@@ -141,9 +151,15 @@ type CommonRedis struct {
 	Db            int    `mapstructure:"db"`
 }
 
+type CommonRabbitMQ struct {
+	URL           string `mapstructure:"url"`
+	PrefetchCount int    `mapstructure:"prefetchCount"`
+}
+
 type Common struct {
-	CommonEtcd  CommonEtcd  `mapstructure:"common-etcd"`
-	CommonRedis CommonRedis `mapstructure:"common-redis"`
+	CommonEtcd     CommonEtcd     `mapstructure:"common-etcd"`
+	CommonRedis    CommonRedis    `mapstructure:"common-redis"`
+	CommonRabbitMQ CommonRabbitMQ `mapstructure:"common-rabbitmq"`
 }
 
 type ConnectBase struct {

@@ -144,4 +144,33 @@ var (
 		},
 		[]string{"service", "command", "status"},
 	)
+
+	RedisOperationDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gochat_redis_operation_duration_seconds",
+			Help:    "Redis operation latency distributions",
+			Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1},
+		},
+		[]string{"service", "command"},
+	)
+)
+
+// Database Metrics
+var (
+	DBQueryTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "gochat_db_query_total",
+			Help: "Total database queries",
+		},
+		[]string{"service", "operation", "table", "status"},
+	)
+
+	DBQueryDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gochat_db_query_duration_seconds",
+			Help:    "Database query latency distributions",
+			Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1},
+		},
+		[]string{"service", "operation", "table"},
+	)
 )

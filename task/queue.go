@@ -6,37 +6,94 @@
 package task
 
 import (
-	"github.com/go-redis/redis"
 	"github.com/sirupsen/logrus"
 	"gochat/config"
 	"gochat/tools"
-	"time"
 )
 
-var RedisClient *redis.Client
+var RabbitMQClient *tools.RabbitMQClient
 
-func (task *Task) InitQueueRedisClient() (err error) {
-	redisOpt := tools.RedisOption{
-		Address:  config.Conf.Common.CommonRedis.RedisAddress,
-		Password: config.Conf.Common.CommonRedis.RedisPassword,
-		Db:       config.Conf.Common.CommonRedis.Db,
+func (task *Task) InitRabbitMQConsumer() error {
+	RabbitMQClient = tools.GetRabbitMQInstance(config.Conf.Common.CommonRabbitMQ.URL)
+	if err := RabbitMQClient.Connect(); err != nil {
+		return err
 	}
-	RedisClient = tools.GetRedisInstance(redisOpt)
-	if pong, err := RedisClient.Ping().Result(); err != nil {
-		logrus.Infof("RedisClient Ping Result pong: %s,  err: %s", pong, err)
+
+	ch := RabbitMQClient.Channel()
+
+	// Set QoS (prefetch count)
+	if err := ch.Qos(config.Conf.Common.CommonRabbitMQ.PrefetchCount, 0, false); err != nil {
+		return err
 	}
-	go func() {
-		for {
-			var result []string
-			//10s timeout
-			result, err = RedisClient.BRPop(time.Second*10, config.QueueName).Result()
-			if err != nil {
-				logrus.Infof("task queue block timeout,no msg err:%s", err.Error())
-			}
-			if len(result) >= 2 {
-				task.Push(result[1])
+
+	// Declare exchange
+	if err := ch.ExchangeDeclare(
+		config.RabbitMQExchange,
+		"direct",
+		true,  // durable
+		false, // auto-deleted
+		false, // internal
+		false, // no-wait
+		nil,
+	); err != nil {
+		return err
+	}
+
+	// Define queues and their routing keys
+	queues := []struct {
+		name string
+		keys []string
+	}{
+		{config.RabbitMQQueueSingle, []string{config.RoutingKeySingleSend}},
+		{config.RabbitMQQueueRoom, []string{config.RoutingKeyRoomSend}},
+		{config.RabbitMQQueueMeta, []string{config.RoutingKeyRoomCount, config.RoutingKeyRoomInfo}},
+	}
+
+	// Declare and bind queues
+	for _, q := range queues {
+		_, err := ch.QueueDeclare(
+			q.name,
+			true,  // durable
+			false, // delete when unused
+			false, // exclusive
+			false, // no-wait
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+
+		for _, key := range q.keys {
+			if err := ch.QueueBind(q.name, key, config.RabbitMQExchange, false, nil); err != nil {
+				return err
 			}
 		}
-	}()
-	return
+
+		go task.consumeQueue(q.name)
+	}
+
+	return nil
+}
+
+func (task *Task) consumeQueue(queueName string) {
+	ch := RabbitMQClient.Channel()
+	msgs, err := ch.Consume(
+		queueName,
+		"",    // consumer tag
+		false, // auto-ack
+		false, // exclusive
+		false, // no-local
+		false, // no-wait
+		nil,
+	)
+	if err != nil {
+		logrus.Fatalf("Failed to consume from %s: %v", queueName, err)
+	}
+
+	logrus.Infof("Started consuming from queue: %s", queueName)
+
+	for msg := range msgs {
+		task.Push(string(msg.Body))
+		msg.Ack(false)
+	}
 }

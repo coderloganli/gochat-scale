@@ -37,6 +37,11 @@ func (logic *Logic) Run() {
 		logrus.Panicf("logic init publishRedisClient fail,err:%s", err.Error())
 	}
 
+	//init RabbitMQ client
+	if err := logic.InitRabbitMQClient(); err != nil {
+		logrus.Panicf("logic init RabbitMQ client fail,err:%s", err.Error())
+	}
+
 	//init rpc server
 	if err := logic.InitRpcServer(); err != nil {
 		logrus.Panicf("logic init rpc server fail")

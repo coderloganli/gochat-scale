@@ -1,0 +1,92 @@
+{
+  "vhosts": [
+    {
+      "name": "gochat"
+    }
+  ],
+  "users": [
+    {
+      "name": "gochat",
+      "password_hash": "EE8JxEVdcbJDvZl5cJCJQGR8P5QV9K7qBaL0K2QrK5Q7J0sT",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "permissions": [
+    {
+      "user": "gochat",
+      "vhost": "gochat",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "gochat.direct",
+      "vhost": "gochat",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "gochat.single",
+      "vhost": "gochat",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "gochat.room",
+      "vhost": "gochat",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "gochat.meta",
+      "vhost": "gochat",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "gochat.direct",
+      "vhost": "gochat",
+      "destination": "gochat.single",
+      "destination_type": "queue",
+      "routing_key": "single.send",
+      "arguments": {}
+    },
+    {
+      "source": "gochat.direct",
+      "vhost": "gochat",
+      "destination": "gochat.room",
+      "destination_type": "queue",
+      "routing_key": "room.send",
+      "arguments": {}
+    },
+    {
+      "source": "gochat.direct",
+      "vhost": "gochat",
+      "destination": "gochat.meta",
+      "destination_type": "queue",
+      "routing_key": "room.count",
+      "arguments": {}
+    },
+    {
+      "source": "gochat.direct",
+      "vhost": "gochat",
+      "destination": "gochat.meta",
+      "destination_type": "queue",
+      "routing_key": "room.info",
+      "arguments": {}
+    }
+  ]
+}

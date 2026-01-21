@@ -40,6 +40,29 @@ services:
       retries: 5
       start_period: 5s
 
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: gochat-rabbitmq
+    hostname: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=gochat
+      - RABBITMQ_DEFAULT_PASS=gochat_secret
+      - RABBITMQ_DEFAULT_VHOST=gochat
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./deployments/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - gochat-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   # Application Services
   logic:
     build:
@@ -54,6 +77,8 @@ services:
       etcd:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - gochat-network
@@ -130,6 +155,8 @@ services:
       etcd:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       connect-ws:
         condition: service_healthy
@@ -246,6 +273,8 @@ volumes:
   etcd-data:
     driver: local
   redis-data:
+    driver: local
+  rabbitmq-data:
     driver: local
   prometheus-data:
     driver: local

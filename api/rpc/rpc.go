@@ -8,6 +8,7 @@ package rpc
 import (
 	"context"
 	"gochat/config"
+	"gochat/pkg/middleware"
 	"gochat/proto"
 	"sync"
 	"time"
@@ -57,7 +58,7 @@ func InitLogicRpcClient() {
 
 func (rpc *RpcLogic) Login(req *proto.LoginRequest) (code int, authToken string, msg string) {
 	reply := &proto.LoginResponse{}
-	err := LogicRpcClient.Call(context.Background(), "Login", req, reply)
+	err := middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "Login", req, reply)
 	if err != nil {
 		msg = err.Error()
 	}
@@ -68,7 +69,7 @@ func (rpc *RpcLogic) Login(req *proto.LoginRequest) (code int, authToken string,
 
 func (rpc *RpcLogic) Register(req *proto.RegisterRequest) (code int, authToken string, msg string) {
 	reply := &proto.RegisterReply{}
-	err := LogicRpcClient.Call(context.Background(), "Register", req, reply)
+	err := middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "Register", req, reply)
 	if err != nil {
 		msg = err.Error()
 	}
@@ -79,7 +80,7 @@ func (rpc *RpcLogic) Register(req *proto.RegisterRequest) (code int, authToken s
 
 func (rpc *RpcLogic) GetUserNameByUserId(req *proto.GetUserInfoRequest) (code int, userName string) {
 	reply := &proto.GetUserInfoResponse{}
-	LogicRpcClient.Call(context.Background(), "GetUserInfoByUserId", req, reply)
+	middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "GetUserInfoByUserId", req, reply)
 	code = reply.Code
 	userName = reply.UserName
 	return
@@ -87,7 +88,7 @@ func (rpc *RpcLogic) GetUserNameByUserId(req *proto.GetUserInfoRequest) (code in
 
 func (rpc *RpcLogic) CheckAuth(req *proto.CheckAuthRequest) (code int, userId int, userName string) {
 	reply := &proto.CheckAuthResponse{}
-	LogicRpcClient.Call(context.Background(), "CheckAuth", req, reply)
+	middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "CheckAuth", req, reply)
 	code = reply.Code
 	userId = reply.UserId
 	userName = reply.UserName
@@ -96,14 +97,14 @@ func (rpc *RpcLogic) CheckAuth(req *proto.CheckAuthRequest) (code int, userId in
 
 func (rpc *RpcLogic) Logout(req *proto.LogoutRequest) (code int) {
 	reply := &proto.LogoutResponse{}
-	LogicRpcClient.Call(context.Background(), "Logout", req, reply)
+	middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "Logout", req, reply)
 	code = reply.Code
 	return
 }
 
 func (rpc *RpcLogic) Push(req *proto.Send) (code int, msg string) {
 	reply := &proto.SuccessReply{}
-	LogicRpcClient.Call(context.Background(), "Push", req, reply)
+	middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "Push", req, reply)
 	code = reply.Code
 	msg = reply.Msg
 	return
@@ -111,7 +112,7 @@ func (rpc *RpcLogic) Push(req *proto.Send) (code int, msg string) {
 
 func (rpc *RpcLogic) PushRoom(req *proto.Send) (code int, msg string) {
 	reply := &proto.SuccessReply{}
-	LogicRpcClient.Call(context.Background(), "PushRoom", req, reply)
+	middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "PushRoom", req, reply)
 	code = reply.Code
 	msg = reply.Msg
 	return
@@ -119,7 +120,7 @@ func (rpc *RpcLogic) PushRoom(req *proto.Send) (code int, msg string) {
 
 func (rpc *RpcLogic) Count(req *proto.Send) (code int, msg string) {
 	reply := &proto.SuccessReply{}
-	LogicRpcClient.Call(context.Background(), "Count", req, reply)
+	middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "Count", req, reply)
 	code = reply.Code
 	msg = reply.Msg
 	return
@@ -127,7 +128,7 @@ func (rpc *RpcLogic) Count(req *proto.Send) (code int, msg string) {
 
 func (rpc *RpcLogic) GetRoomInfo(req *proto.Send) (code int, msg string) {
 	reply := &proto.SuccessReply{}
-	LogicRpcClient.Call(context.Background(), "GetRoomInfo", req, reply)
+	middleware.InstrumentedCall(context.Background(), LogicRpcClient, "api", "logic", "GetRoomInfo", req, reply)
 	code = reply.Code
 	msg = reply.Msg
 	return

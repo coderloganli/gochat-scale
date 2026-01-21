@@ -7,9 +7,13 @@ package logic
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/go-redis/redis"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/rcrowley/go-metrics"
 	"github.com/rpcxio/rpcx-etcd/serverplugin"
 	"github.com/sirupsen/logrus"
@@ -19,11 +23,11 @@ import (
 	"gochat/proto"
 	"gochat/tools"
 	"strings"
-	"time"
 )
 
 var RedisClient *redis.Client
 var RedisSessClient *redis.Client
+var RabbitMQClient *tools.RabbitMQClient
 
 func (logic *Logic) InitPublishRedisClient() (err error) {
 	redisOpt := tools.RedisOption{
@@ -38,6 +42,24 @@ func (logic *Logic) InitPublishRedisClient() (err error) {
 	//this can change use another redis save session data
 	RedisSessClient = RedisClient
 	return err
+}
+
+func (logic *Logic) InitRabbitMQClient() error {
+	RabbitMQClient = tools.GetRabbitMQInstance(config.Conf.Common.CommonRabbitMQ.URL)
+	if err := RabbitMQClient.Connect(); err != nil {
+		return err
+	}
+
+	ch := RabbitMQClient.Channel()
+	return ch.ExchangeDeclare(
+		config.RabbitMQExchange,
+		"direct",
+		true,  // durable
+		false, // auto-deleted
+		false, // internal
+		false, // no-wait
+		nil,
+	)
 }
 
 func (logic *Logic) InitRpcServer() (err error) {
@@ -85,27 +107,37 @@ func (logic *Logic) addRegistryPlugin(s *server.Server, network string, addr str
 	s.Plugins.Add(r)
 }
 
-func (logic *Logic) RedisPublishChannel(serverId string, toUserId int, msg []byte) (err error) {
+func (logic *Logic) PublishToUser(serverId string, toUserId int, msg []byte) (err error) {
 	redisMsg := proto.RedisMsg{
 		Op:       config.OpSingleSend,
 		ServerId: serverId,
 		UserId:   toUserId,
 		Msg:      msg,
 	}
-	redisMsgStr, err := json.Marshal(redisMsg)
+	body, err := json.Marshal(redisMsg)
 	if err != nil {
-		logrus.Errorf("logic,RedisPublishChannel Marshal err:%s", err.Error())
+		logrus.Errorf("logic,PublishToUser Marshal err:%s", err.Error())
 		return err
 	}
-	redisChannel := config.QueueName
-	if err := RedisClient.LPush(redisChannel, redisMsgStr).Err(); err != nil {
-		logrus.Errorf("logic,lpush err:%s", err.Error())
-		return err
-	}
-	return
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return RabbitMQClient.Channel().PublishWithContext(
+		ctx,
+		config.RabbitMQExchange,
+		config.RoutingKeySingleSend,
+		false, // mandatory
+		false, // immediate
+		amqp.Publishing{
+			DeliveryMode: amqp.Persistent,
+			ContentType:  "application/json",
+			Body:         body,
+		},
+	)
 }
 
-func (logic *Logic) RedisPublishRoomInfo(roomId int, count int, RoomUserInfo map[string]string, msg []byte) (err error) {
+func (logic *Logic) PublishToRoom(roomId int, count int, RoomUserInfo map[string]string, msg []byte) (err error) {
 	var redisMsg = &proto.RedisMsg{
 		Op:           config.OpRoomSend,
 		RoomId:       roomId,
@@ -113,56 +145,86 @@ func (logic *Logic) RedisPublishRoomInfo(roomId int, count int, RoomUserInfo map
 		Msg:          msg,
 		RoomUserInfo: RoomUserInfo,
 	}
-	redisMsgByte, err := json.Marshal(redisMsg)
+	body, err := json.Marshal(redisMsg)
 	if err != nil {
-		logrus.Errorf("logic,RedisPublishRoomInfo redisMsg error : %s", err.Error())
+		logrus.Errorf("logic,PublishToRoom redisMsg error : %s", err.Error())
 		return
 	}
-	err = RedisClient.LPush(config.QueueName, redisMsgByte).Err()
-	if err != nil {
-		logrus.Errorf("logic,RedisPublishRoomInfo redisMsg error : %s", err.Error())
-		return
-	}
-	return
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return RabbitMQClient.Channel().PublishWithContext(
+		ctx,
+		config.RabbitMQExchange,
+		config.RoutingKeyRoomSend,
+		false,
+		false,
+		amqp.Publishing{
+			DeliveryMode: amqp.Persistent,
+			ContentType:  "application/json",
+			Body:         body,
+		},
+	)
 }
 
-func (logic *Logic) RedisPushRoomCount(roomId int, count int) (err error) {
+func (logic *Logic) PublishRoomCount(roomId int, count int) (err error) {
 	var redisMsg = &proto.RedisMsg{
 		Op:     config.OpRoomCountSend,
 		RoomId: roomId,
 		Count:  count,
 	}
-	redisMsgByte, err := json.Marshal(redisMsg)
+	body, err := json.Marshal(redisMsg)
 	if err != nil {
-		logrus.Errorf("logic,RedisPushRoomCount redisMsg error : %s", err.Error())
+		logrus.Errorf("logic,PublishRoomCount redisMsg error : %s", err.Error())
 		return
 	}
-	err = RedisClient.LPush(config.QueueName, redisMsgByte).Err()
-	if err != nil {
-		logrus.Errorf("logic,RedisPushRoomCount redisMsg error : %s", err.Error())
-		return
-	}
-	return
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return RabbitMQClient.Channel().PublishWithContext(
+		ctx,
+		config.RabbitMQExchange,
+		config.RoutingKeyRoomCount,
+		false,
+		false,
+		amqp.Publishing{
+			DeliveryMode: amqp.Persistent,
+			ContentType:  "application/json",
+			Body:         body,
+		},
+	)
 }
 
-func (logic *Logic) RedisPushRoomInfo(roomId int, count int, roomUserInfo map[string]string) (err error) {
+func (logic *Logic) PublishRoomInfo(roomId int, count int, roomUserInfo map[string]string) (err error) {
 	var redisMsg = &proto.RedisMsg{
 		Op:           config.OpRoomInfoSend,
 		RoomId:       roomId,
 		Count:        count,
 		RoomUserInfo: roomUserInfo,
 	}
-	redisMsgByte, err := json.Marshal(redisMsg)
+	body, err := json.Marshal(redisMsg)
 	if err != nil {
-		logrus.Errorf("logic,RedisPushRoomInfo redisMsg error : %s", err.Error())
+		logrus.Errorf("logic,PublishRoomInfo redisMsg error : %s", err.Error())
 		return
 	}
-	err = RedisClient.LPush(config.QueueName, redisMsgByte).Err()
-	if err != nil {
-		logrus.Errorf("logic,RedisPushRoomInfo redisMsg error : %s", err.Error())
-		return
-	}
-	return
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return RabbitMQClient.Channel().PublishWithContext(
+		ctx,
+		config.RabbitMQExchange,
+		config.RoutingKeyRoomInfo,
+		false,
+		false,
+		amqp.Publishing{
+			DeliveryMode: amqp.Persistent,
+			ContentType:  "application/json",
+			Body:         body,
+		},
+	)
 }
 
 func (logic *Logic) getRoomUserKey(authKey string) string {

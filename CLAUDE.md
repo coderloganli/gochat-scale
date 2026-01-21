@@ -97,3 +97,7 @@ Scale services: `docker compose up --scale logic=3 --scale connect-ws=2`
 ## Metrics
 
 All services expose Prometheus metrics. Scraped by Prometheus, visualized in Grafana dashboards at `deployments/grafana/`.
+
+## Coding Style
+
+- All code and comments must be written in English.

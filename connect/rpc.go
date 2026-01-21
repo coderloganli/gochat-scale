@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"gochat/config"
+	"gochat/pkg/middleware"
 	"gochat/proto"
 	"gochat/tools"
 	"strings"
@@ -61,7 +62,7 @@ func (c *Connect) InitLogicRpcClient() (err error) {
 
 func (rpc *RpcConnect) Connect(connReq *proto.ConnectRequest) (uid int, err error) {
 	reply := &proto.ConnectReply{}
-	err = logicRpcClient.Call(context.Background(), "Connect", connReq, reply)
+	err = middleware.InstrumentedCall(context.Background(), logicRpcClient, "connect", "logic", "Connect", connReq, reply)
 	if err != nil {
 		logrus.Fatalf("failed to call: %v", err)
 	}
@@ -72,7 +73,7 @@ func (rpc *RpcConnect) Connect(connReq *proto.ConnectRequest) (uid int, err erro
 
 func (rpc *RpcConnect) DisConnect(disConnReq *proto.DisConnectRequest) (err error) {
 	reply := &proto.DisConnectReply{}
-	if err = logicRpcClient.Call(context.Background(), "DisConnect", disConnReq, reply); err != nil {
+	if err = middleware.InstrumentedCall(context.Background(), logicRpcClient, "connect", "logic", "DisConnect", disConnReq, reply); err != nil {
 		logrus.Fatalf("failed to call: %v", err)
 	}
 	return
