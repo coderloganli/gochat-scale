@@ -195,7 +195,7 @@ func (rpc *RpcLogic) Push(ctx context.Context, args *proto.Send, reply *proto.Su
 		logrus.Errorf("logic,push parse int fail:%s", err.Error())
 		return
 	}
-	err = logic.RedisPublishChannel(serverIdStr, sendData.ToUserId, bodyBytes)
+	err = logic.PublishToUser(serverIdStr, sendData.ToUserId, bodyBytes)
 	if err != nil {
 		logrus.Errorf("logic,redis publish err: %s", err.Error())
 		return
@@ -235,7 +235,7 @@ func (rpc *RpcLogic) PushRoom(ctx context.Context, args *proto.Send, reply *prot
 		logrus.Errorf("logic,PushRoom Marshal err:%s", err.Error())
 		return
 	}
-	err = logic.RedisPublishRoomInfo(roomId, len(roomUserInfo), roomUserInfo, bodyBytes)
+	err = logic.PublishToRoom(roomId, len(roomUserInfo), roomUserInfo, bodyBytes)
 	if err != nil {
 		logrus.Errorf("logic,PushRoom err:%s", err.Error())
 		return
@@ -254,7 +254,7 @@ func (rpc *RpcLogic) Count(ctx context.Context, args *proto.Send, reply *proto.S
 	logic := new(Logic)
 	var count int
 	count, err = RedisSessClient.Get(logic.getRoomOnlineCountKey(fmt.Sprintf("%d", roomId))).Int()
-	err = logic.RedisPushRoomCount(roomId, count)
+	err = logic.PublishRoomCount(roomId, count)
 	if err != nil {
 		logrus.Errorf("logic,Count err:%s", err.Error())
 		return
@@ -277,7 +277,7 @@ func (rpc *RpcLogic) GetRoomInfo(ctx context.Context, args *proto.Send, reply *p
 	if len(roomUserInfo) == 0 {
 		return errors.New("getRoomInfo no this user")
 	}
-	err = logic.RedisPushRoomInfo(roomId, len(roomUserInfo), roomUserInfo)
+	err = logic.PublishRoomInfo(roomId, len(roomUserInfo), roomUserInfo)
 	if err != nil {
 		logrus.Errorf("logic,GetRoomInfo err:%s", err.Error())
 		return
@@ -346,7 +346,7 @@ func (rpc *RpcLogic) DisConnect(ctx context.Context, args *proto.DisConnectReque
 	if err != nil {
 		logrus.Warnf("RedisCli HGetAll roomUserInfo key:%s, err: %s", roomUserKey, err)
 	}
-	if err = logic.RedisPublishRoomInfo(args.RoomId, len(roomUserInfo), roomUserInfo, nil); err != nil {
+	if err = logic.PublishToRoom(args.RoomId, len(roomUserInfo), roomUserInfo, nil); err != nil {
 		logrus.Warnf("publish RedisPublishRoomCount err: %s", err.Error())
 		return
 	}

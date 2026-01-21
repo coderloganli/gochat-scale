@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"gochat/config"
+	"gochat/pkg/middleware"
 	"gochat/proto"
 	"gochat/tools"
 	"strings"
@@ -165,7 +166,7 @@ func (task *Task) pushSingleToConnect(serverId string, userId int, msg []byte) {
 		logrus.Errorf("get rpc client err %v", err)
 		return
 	}
-	err = connectRpc.Call(context.Background(), "PushSingleMsg", pushMsgReq, reply)
+	err = middleware.InstrumentedCall(context.Background(), connectRpc, "task", "connect", "PushSingleMsg", pushMsgReq, reply)
 	if err != nil {
 		logrus.Errorf("pushSingleToConnect Call err %v", err)
 		return
@@ -187,7 +188,7 @@ func (task *Task) broadcastRoomToConnect(roomId int, msg []byte) {
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
 		logrus.Infof("broadcastRoomToConnect rpc  %v", rpc)
-		rpc.Call(context.Background(), "PushRoomMsg", pushRoomMsgReq, reply)
+		middleware.InstrumentedCall(context.Background(), rpc, "task", "connect", "PushRoomMsg", pushRoomMsgReq, reply)
 		logrus.Infof("reply %s", reply.Msg)
 	}
 }
@@ -216,7 +217,7 @@ func (task *Task) broadcastRoomCountToConnect(roomId, count int) {
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
 		logrus.Infof("broadcastRoomCountToConnect rpc  %v", rpc)
-		rpc.Call(context.Background(), "PushRoomCount", pushRoomMsgReq, reply)
+		middleware.InstrumentedCall(context.Background(), rpc, "task", "connect", "PushRoomCount", pushRoomMsgReq, reply)
 		logrus.Infof("reply %s", reply.Msg)
 	}
 }
@@ -247,7 +248,7 @@ func (task *Task) broadcastRoomInfoToConnect(roomId int, roomUserInfo map[string
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
 		logrus.Infof("broadcastRoomInfoToConnect rpc  %v", rpc)
-		rpc.Call(context.Background(), "PushRoomInfo", pushRoomMsgReq, reply)
+		middleware.InstrumentedCall(context.Background(), rpc, "task", "connect", "PushRoomInfo", pushRoomMsgReq, reply)
 		logrus.Infof("broadcastRoomInfoToConnect rpc  reply %v", reply)
 	}
 }

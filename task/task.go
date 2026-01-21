@@ -27,9 +27,9 @@ func (task *Task) Run() {
 	//init metrics server
 	metrics.StartMetricsServer(9094)
 
-	//read from redis queue
-	if err := task.InitQueueRedisClient(); err != nil {
-		logrus.Panicf("task init publishRedisClient fail,err:%s", err.Error())
+	//init RabbitMQ consumer
+	if err := task.InitRabbitMQConsumer(); err != nil {
+		logrus.Panicf("task init RabbitMQ consumer fail,err:%s", err.Error())
 	}
 	//rpc call connect layer send msg
 	if err := task.InitConnectRpcClient(); err != nil {
