@@ -9,16 +9,19 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
-	"gochat/api/router"
-	"gochat/api/rpc"
-	"gochat/config"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"gochat/api/router"
+	"gochat/api/rpc"
+	"gochat/config"
+	"gochat/pkg/tracing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 type Chat struct {
@@ -30,6 +33,23 @@ func New() *Chat {
 
 // api server,Also, you can use gin,echo ... framework wrap
 func (c *Chat) Run() {
+	// Initialize tracer
+	tracingCfg := tracing.Config{
+		Enabled:      config.Conf.Common.CommonTracing.Enabled,
+		Endpoint:     config.Conf.Common.CommonTracing.Endpoint,
+		SamplingRate: config.Conf.Common.CommonTracing.SamplingRate,
+	}
+	shutdown, err := tracing.InitTracer("api", tracingCfg)
+	if err != nil {
+		logrus.Errorf("Failed to initialize tracer: %v", err)
+	} else {
+		defer func() {
+			if err := shutdown(context.Background()); err != nil {
+				logrus.Errorf("Failed to shutdown tracer: %v", err)
+			}
+		}()
+	}
+
 	//init rpc client
 	rpc.InitLogicRpcClient()
 

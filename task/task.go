@@ -6,10 +6,14 @@
 package task
 
 import (
-	"github.com/sirupsen/logrus"
+	"context"
+	"runtime"
+
 	"gochat/config"
 	"gochat/pkg/metrics"
-	"runtime"
+	"gochat/pkg/tracing"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Task struct {
@@ -23,6 +27,23 @@ func (task *Task) Run() {
 	//read config
 	taskConfig := config.Conf.Task
 	runtime.GOMAXPROCS(taskConfig.TaskBase.CpuNum)
+
+	// Initialize tracer
+	tracingCfg := tracing.Config{
+		Enabled:      config.Conf.Common.CommonTracing.Enabled,
+		Endpoint:     config.Conf.Common.CommonTracing.Endpoint,
+		SamplingRate: config.Conf.Common.CommonTracing.SamplingRate,
+	}
+	shutdown, err := tracing.InitTracer("task", tracingCfg)
+	if err != nil {
+		logrus.Errorf("Failed to initialize tracer: %v", err)
+	} else {
+		defer func() {
+			if err := shutdown(context.Background()); err != nil {
+				logrus.Errorf("Failed to shutdown tracer: %v", err)
+			}
+		}()
+	}
 
 	//init metrics server
 	metrics.StartMetricsServer(9094)

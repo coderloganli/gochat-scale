@@ -288,9 +288,9 @@ loadtest-deps:
 loadtest-start: loadtest-deps
 	@echo "Starting GoChat services for load testing..."
 ifeq ($(NOBUILD),1)
-	$(LOADTEST_COMPOSE) up -d etcd redis logic connect-ws connect-tcp task api
+	$(LOADTEST_COMPOSE) up -d etcd redis rabbitmq jaeger prometheus grafana logic connect-ws connect-tcp task api
 else
-	$(LOADTEST_COMPOSE) up -d --build etcd redis logic connect-ws connect-tcp task api
+	$(LOADTEST_COMPOSE) up -d --build etcd redis rabbitmq jaeger prometheus grafana logic connect-ws connect-tcp task api
 endif
 	@echo "Waiting for services to be healthy (60s)..."
 	@sleep 60
@@ -299,7 +299,7 @@ endif
 # Start services without rebuilding (quick start for load testing)
 loadtest-start-quick: loadtest-deps
 	@echo "Starting GoChat services for load testing (no rebuild)..."
-	$(LOADTEST_COMPOSE) up -d etcd redis logic connect-ws connect-tcp task api
+	$(LOADTEST_COMPOSE) up -d etcd redis rabbitmq jaeger prometheus grafana logic connect-ws connect-tcp task api
 	@echo "Waiting for services to be healthy (60s)..."
 	@sleep 60
 	@echo "Services ready for load testing"
