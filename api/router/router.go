@@ -20,6 +20,7 @@ import (
 func Register() *gin.Engine {
 	r := gin.Default()
 	r.Use(CorsMiddleware())
+	r.Use(middleware.TracingMiddleware("api"))
 	r.Use(middleware.PrometheusMiddleware("api"))
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	initUserRouter(r)
@@ -70,7 +71,7 @@ func CheckSessionId() gin.HandlerFunc {
 		req := &proto.CheckAuthRequest{
 			AuthToken: authToken,
 		}
-		code, userId, userName := rpc.RpcLogicObj.CheckAuth(req)
+		code, userId, userName := rpc.RpcLogicObj.CheckAuth(c.Request.Context(), req)
 		if code == tools.CodeFail || userId <= 0 || userName == "" {
 			c.Abort()
 			tools.ResponseWithCode(c, tools.CodeSessionError, nil, nil)

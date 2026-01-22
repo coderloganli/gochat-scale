@@ -6,14 +6,18 @@
 package connect
 
 import (
+	"context"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-	"gochat/config"
-	"gochat/pkg/metrics"
 	_ "net/http/pprof"
 	"runtime"
 	"time"
+
+	"gochat/config"
+	"gochat/pkg/metrics"
+	"gochat/pkg/tracing"
+
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 var DefaultServer *Server
@@ -32,6 +36,23 @@ func (c *Connect) Run() {
 
 	//set the maximum number of CPUs that can be executing
 	runtime.GOMAXPROCS(connectConfig.ConnectBucket.CpuNum)
+
+	// Initialize tracer
+	tracingCfg := tracing.Config{
+		Enabled:      config.Conf.Common.CommonTracing.Enabled,
+		Endpoint:     config.Conf.Common.CommonTracing.Endpoint,
+		SamplingRate: config.Conf.Common.CommonTracing.SamplingRate,
+	}
+	shutdown, err := tracing.InitTracer("connect-ws", tracingCfg)
+	if err != nil {
+		logrus.Errorf("Failed to initialize tracer: %v", err)
+	} else {
+		defer func() {
+			if err := shutdown(context.Background()); err != nil {
+				logrus.Errorf("Failed to shutdown tracer: %v", err)
+			}
+		}()
+	}
 
 	//init metrics server
 	metrics.StartMetricsServer(9092)
@@ -78,6 +99,23 @@ func (c *Connect) RunTcp() {
 
 	//set the maximum number of CPUs that can be executing
 	runtime.GOMAXPROCS(connectConfig.ConnectBucket.CpuNum)
+
+	// Initialize tracer
+	tracingCfg := tracing.Config{
+		Enabled:      config.Conf.Common.CommonTracing.Enabled,
+		Endpoint:     config.Conf.Common.CommonTracing.Endpoint,
+		SamplingRate: config.Conf.Common.CommonTracing.SamplingRate,
+	}
+	shutdown, err := tracing.InitTracer("connect-tcp", tracingCfg)
+	if err != nil {
+		logrus.Errorf("Failed to initialize tracer: %v", err)
+	} else {
+		defer func() {
+			if err := shutdown(context.Background()); err != nil {
+				logrus.Errorf("Failed to shutdown tracer: %v", err)
+			}
+		}()
+	}
 
 	//init metrics server
 	metrics.StartMetricsServer(9093)

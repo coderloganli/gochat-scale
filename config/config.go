@@ -156,10 +156,17 @@ type CommonRabbitMQ struct {
 	PrefetchCount int    `mapstructure:"prefetchCount"`
 }
 
+type CommonTracing struct {
+	Enabled      bool    `mapstructure:"enabled"`
+	Endpoint     string  `mapstructure:"endpoint"`
+	SamplingRate float64 `mapstructure:"samplingRate"`
+}
+
 type Common struct {
 	CommonEtcd     CommonEtcd     `mapstructure:"common-etcd"`
 	CommonRedis    CommonRedis    `mapstructure:"common-redis"`
 	CommonRabbitMQ CommonRabbitMQ `mapstructure:"common-rabbitmq"`
+	CommonTracing  CommonTracing  `mapstructure:"common-tracing"`
 }
 
 type ConnectBase struct {

@@ -6,12 +6,13 @@
 package handler
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
 	"gochat/api/rpc"
 	"gochat/pkg/metrics"
 	"gochat/proto"
 	"gochat/tools"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 type FormLogin struct {
@@ -29,7 +30,7 @@ func Login(c *gin.Context) {
 		Name:     formLogin.UserName,
 		Password: tools.Sha1(formLogin.Password),
 	}
-	code, authToken, msg := rpc.RpcLogicObj.Login(req)
+	code, authToken, msg := rpc.RpcLogicObj.Login(c.Request.Context(), req)
 	status := "success"
 	if code == tools.CodeFail || authToken == "" {
 		status = "failure"
@@ -56,7 +57,7 @@ func Register(c *gin.Context) {
 		Name:     formRegister.UserName,
 		Password: tools.Sha1(formRegister.Password),
 	}
-	code, authToken, msg := rpc.RpcLogicObj.Register(req)
+	code, authToken, msg := rpc.RpcLogicObj.Register(c.Request.Context(), req)
 	status := "success"
 	if code == tools.CodeFail || authToken == "" {
 		status = "failure"
@@ -82,7 +83,7 @@ func CheckAuth(c *gin.Context) {
 	req := &proto.CheckAuthRequest{
 		AuthToken: authToken,
 	}
-	code, userId, userName := rpc.RpcLogicObj.CheckAuth(req)
+	code, userId, userName := rpc.RpcLogicObj.CheckAuth(c.Request.Context(), req)
 	if code == tools.CodeFail {
 		tools.FailWithMsg(c, "auth fail")
 		return
@@ -108,7 +109,7 @@ func Logout(c *gin.Context) {
 	logoutReq := &proto.LogoutRequest{
 		AuthToken: authToken,
 	}
-	code := rpc.RpcLogicObj.Logout(logoutReq)
+	code := rpc.RpcLogicObj.Logout(c.Request.Context(), logoutReq)
 	if code == tools.CodeFail {
 		tools.FailWithMsg(c, "logout fail!")
 		return

@@ -6,12 +6,16 @@
 package logic
 
 import (
+	"context"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
+	"runtime"
+
 	"gochat/config"
 	"gochat/pkg/metrics"
-	"runtime"
+	"gochat/pkg/tracing"
+
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 type Logic struct {
@@ -28,6 +32,23 @@ func (logic *Logic) Run() {
 
 	runtime.GOMAXPROCS(logicConfig.LogicBase.CpuNum)
 	logic.ServerId = fmt.Sprintf("logic-%s", uuid.New().String())
+
+	// Initialize tracer
+	tracingCfg := tracing.Config{
+		Enabled:      config.Conf.Common.CommonTracing.Enabled,
+		Endpoint:     config.Conf.Common.CommonTracing.Endpoint,
+		SamplingRate: config.Conf.Common.CommonTracing.SamplingRate,
+	}
+	shutdown, err := tracing.InitTracer("logic", tracingCfg)
+	if err != nil {
+		logrus.Errorf("Failed to initialize tracer: %v", err)
+	} else {
+		defer func() {
+			if err := shutdown(context.Background()); err != nil {
+				logrus.Errorf("Failed to shutdown tracer: %v", err)
+			}
+		}()
+	}
 
 	//init metrics server
 	metrics.StartMetricsServer(9091)

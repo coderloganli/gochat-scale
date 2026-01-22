@@ -7,16 +7,19 @@ package connect
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
-	"github.com/sirupsen/logrus"
+	"net"
+	"strings"
+	"time"
+
 	"gochat/api/rpc"
 	"gochat/config"
 	"gochat/pkg/stickpackage"
 	"gochat/proto"
-	"net"
-	"strings"
-	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 const maxInt = 1<<31 - 1
@@ -194,7 +197,7 @@ func (c *Connect) readDataFromTcp(s *Server, ch *Channel) {
 					RoomId:       rawTcpMsg.RoomId,
 					Op:           config.OpRoomSend,
 				}
-				code, msg := rpc.RpcLogicObj.PushRoom(req)
+				code, msg := rpc.RpcLogicObj.PushRoom(context.Background(), req)
 				logrus.Infof("tcp conn push msg to room,err code is:%d,err msg is:%s", code, msg)
 			}
 		}
