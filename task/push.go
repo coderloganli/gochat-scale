@@ -45,9 +45,9 @@ func (task *Task) processSinglePush(ch chan *PushParams) {
 func (task *Task) Push(msg string) {
 	m := &proto.RedisMsg{}
 	if err := json.Unmarshal([]byte(msg), m); err != nil {
-		logrus.Infof(" json.Unmarshal err:%v ", err)
+		logrus.Warnf("json.Unmarshal err:%v", err)
 	}
-	logrus.Infof("push msg info %d,op is:%d", m.RoomId, m.Op)
+	logrus.Debugf("push msg info %d,op is:%d", m.RoomId, m.Op)
 	switch m.Op {
 	case config.OpSingleSend:
 		pushChannel[rand.Int()%config.Conf.Task.TaskBase.PushChan] <- &PushParams{

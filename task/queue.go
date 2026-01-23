@@ -76,7 +76,15 @@ func (task *Task) InitRabbitMQConsumer() error {
 }
 
 func (task *Task) consumeQueue(queueName string) {
-	ch := RabbitMQClient.Channel()
+	ch, err := RabbitMQClient.NewChannel()
+	if err != nil {
+		logrus.Fatalf("Failed to create channel for %s: %v", queueName, err)
+	}
+
+	if err := ch.Qos(config.Conf.Common.CommonRabbitMQ.PrefetchCount, 0, false); err != nil {
+		logrus.Fatalf("Failed to set QoS for %s: %v", queueName, err)
+	}
+
 	msgs, err := ch.Consume(
 		queueName,
 		"",    // consumer tag
@@ -90,10 +98,12 @@ func (task *Task) consumeQueue(queueName string) {
 		logrus.Fatalf("Failed to consume from %s: %v", queueName, err)
 	}
 
-	logrus.Infof("Started consuming from queue: %s", queueName)
+	logrus.Debugf("Started consuming from queue: %s", queueName)
 
 	for msg := range msgs {
 		task.Push(string(msg.Body))
 		msg.Ack(false)
 	}
+
+	logrus.Warnf("Consumer channel closed for queue: %s", queueName)
 }
