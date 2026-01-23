@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ type RabbitMQClient struct {
 	channel *amqp.Channel
 	url     string
 	mu      sync.RWMutex
+	pubMu   sync.Mutex
 	closed  bool
 }
 
@@ -100,6 +102,27 @@ func (c *RabbitMQClient) Channel() *amqp.Channel {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.channel
+}
+
+// NewChannel creates a new independent amqp.Channel from the underlying connection.
+// Each goroutine that performs Consume/Ack should use its own channel since amqp.Channel is not concurrency-safe.
+func (c *RabbitMQClient) NewChannel() (*amqp.Channel, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.conn == nil {
+		return nil, amqp.ErrClosed
+	}
+	return c.conn.Channel()
+}
+
+// Publish safely publishes a message, serializing access to the shared channel.
+func (c *RabbitMQClient) Publish(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+	c.pubMu.Lock()
+	defer c.pubMu.Unlock()
+	c.mu.RLock()
+	ch := c.channel
+	c.mu.RUnlock()
+	return ch.PublishWithContext(ctx, exchange, key, mandatory, immediate, msg)
 }
 
 func (c *RabbitMQClient) Connection() *amqp.Connection {

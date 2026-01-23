@@ -123,7 +123,7 @@ func (logic *Logic) PublishToUser(serverId string, toUserId int, msg []byte) (er
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	return RabbitMQClient.Channel().PublishWithContext(
+	return RabbitMQClient.Publish(
 		ctx,
 		config.RabbitMQExchange,
 		config.RoutingKeySingleSend,
@@ -154,7 +154,7 @@ func (logic *Logic) PublishToRoom(roomId int, count int, RoomUserInfo map[string
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	return RabbitMQClient.Channel().PublishWithContext(
+	return RabbitMQClient.Publish(
 		ctx,
 		config.RabbitMQExchange,
 		config.RoutingKeyRoomSend,
@@ -183,7 +183,7 @@ func (logic *Logic) PublishRoomCount(roomId int, count int) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	return RabbitMQClient.Channel().PublishWithContext(
+	return RabbitMQClient.Publish(
 		ctx,
 		config.RabbitMQExchange,
 		config.RoutingKeyRoomCount,
@@ -213,7 +213,7 @@ func (logic *Logic) PublishRoomInfo(roomId int, count int, roomUserInfo map[stri
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	return RabbitMQClient.Channel().PublishWithContext(
+	return RabbitMQClient.Publish(
 		ctx,
 		config.RabbitMQExchange,
 		config.RoutingKeyRoomInfo,

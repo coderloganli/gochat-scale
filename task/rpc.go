@@ -35,7 +35,7 @@ type Instance struct {
 }
 
 type RpcConnectClient struct {
-	lock         sync.Mutex
+	lock         sync.RWMutex
 	ServerInsMap map[string][]Instance //serverId--[]ins
 	IndexMap     map[string]int        //serverId--index
 }
@@ -58,10 +58,17 @@ func (rc *RpcConnectClient) GetRpcClientByServerId(serverId string) (c client.XC
 }
 
 func (rc *RpcConnectClient) GetAllConnectTypeRpcClient() (rpcClientList []client.XClient) {
-	for serverId, _ := range rc.ServerInsMap {
+	rc.lock.RLock()
+	serverIds := make([]string, 0, len(rc.ServerInsMap))
+	for serverId := range rc.ServerInsMap {
+		serverIds = append(serverIds, serverId)
+	}
+	rc.lock.RUnlock()
+
+	for _, serverId := range serverIds {
 		c, err := rc.GetRpcClientByServerId(serverId)
 		if err != nil {
-			logrus.Infof("GetAllConnectTypeRpcClient err:%s", err.Error())
+			logrus.Debugf("GetAllConnectTypeRpcClient err:%s", err.Error())
 			continue
 		}
 		rpcClientList = append(rpcClientList, c)
@@ -102,7 +109,7 @@ func (task *Task) InitConnectRpcClient() (err error) {
 		logrus.Fatalf("init task rpc etcd discovery client fail:%s", e.Error())
 	}
 	if len(d.GetServices()) <= 0 {
-		logrus.Infof("no etcd server find!")
+		logrus.Debugf("no etcd server find!")
 	}
 	// watch connect server change && update RpcConnectClientList
 	go task.watchServicesChange(d)
@@ -115,13 +122,13 @@ func (task *Task) watchServicesChange(d client.ServiceDiscovery) {
 		if len(kvChan) <= 0 {
 			logrus.Errorf("connect services change, connect alarm, no abailable ip")
 		}
-		logrus.Infof("connect services change trigger...")
+		logrus.Debugf("connect services change trigger...")
 		insMap := make(map[string][]Instance)
 		for _, kv := range kvChan {
-			logrus.Infof("connect services change,key is:%s,value is:%s", kv.Key, kv.Value)
+			logrus.Debugf("connect services change,key is:%s,value is:%s", kv.Key, kv.Value)
 			serverType := getParamByKey(kv.Value, "serverType")
 			serverId := getParamByKey(kv.Value, "serverId")
-			logrus.Infof("serverType is:%s,serverId is:%s", serverType, serverId)
+			logrus.Debugf("serverType is:%s,serverId is:%s", serverType, serverId)
 			if serverType == "" || serverId == "" {
 				continue
 			}
@@ -150,7 +157,7 @@ func (task *Task) watchServicesChange(d client.ServiceDiscovery) {
 }
 
 func (task *Task) pushSingleToConnect(serverId string, userId int, msg []byte) {
-	logrus.Infof("pushSingleToConnect Body %s", string(msg))
+	logrus.Debugf("pushSingleToConnect Body %s", string(msg))
 	pushMsgReq := &proto.PushMsgRequest{
 		UserId: userId,
 		Msg: proto.Msg{
@@ -171,7 +178,7 @@ func (task *Task) pushSingleToConnect(serverId string, userId int, msg []byte) {
 		logrus.Errorf("pushSingleToConnect Call err %v", err)
 		return
 	}
-	logrus.Infof("reply %s", reply.Msg)
+	logrus.Debugf("reply %s", reply.Msg)
 }
 
 func (task *Task) broadcastRoomToConnect(roomId int, msg []byte) {
@@ -187,9 +194,9 @@ func (task *Task) broadcastRoomToConnect(roomId int, msg []byte) {
 	reply := &proto.SuccessReply{}
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
-		logrus.Infof("broadcastRoomToConnect rpc  %v", rpc)
+		logrus.Debugf("broadcastRoomToConnect rpc %v", rpc)
 		middleware.InstrumentedCall(context.Background(), rpc, "task", "connect", "PushRoomMsg", pushRoomMsgReq, reply)
-		logrus.Infof("reply %s", reply.Msg)
+		logrus.Debugf("reply %s", reply.Msg)
 	}
 }
 
@@ -216,9 +223,9 @@ func (task *Task) broadcastRoomCountToConnect(roomId, count int) {
 	reply := &proto.SuccessReply{}
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
-		logrus.Infof("broadcastRoomCountToConnect rpc  %v", rpc)
+		logrus.Debugf("broadcastRoomCountToConnect rpc %v", rpc)
 		middleware.InstrumentedCall(context.Background(), rpc, "task", "connect", "PushRoomCount", pushRoomMsgReq, reply)
-		logrus.Infof("reply %s", reply.Msg)
+		logrus.Debugf("reply %s", reply.Msg)
 	}
 }
 
@@ -247,8 +254,8 @@ func (task *Task) broadcastRoomInfoToConnect(roomId int, roomUserInfo map[string
 	reply := &proto.SuccessReply{}
 	rpcList := RClient.GetAllConnectTypeRpcClient()
 	for _, rpc := range rpcList {
-		logrus.Infof("broadcastRoomInfoToConnect rpc  %v", rpc)
+		logrus.Debugf("broadcastRoomInfoToConnect rpc %v", rpc)
 		middleware.InstrumentedCall(context.Background(), rpc, "task", "connect", "PushRoomInfo", pushRoomMsgReq, reply)
-		logrus.Infof("broadcastRoomInfoToConnect rpc  reply %v", reply)
+		logrus.Debugf("broadcastRoomInfoToConnect rpc reply %v", reply)
 	}
 }
