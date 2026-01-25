@@ -90,7 +90,7 @@ func (b *Bucket) DeleteChannel(ch *Channel) {
 		ok   bool
 		room *Room
 	)
-	b.cLock.RLock()
+	b.cLock.Lock()
 	if ch, ok = b.chs[ch.userId]; ok {
 		room = b.chs[ch.userId].Room
 		//delete from bucket
@@ -102,7 +102,7 @@ func (b *Bucket) DeleteChannel(ch *Channel) {
 			delete(b.rooms, room.Id)
 		}
 	}
-	b.cLock.RUnlock()
+	b.cLock.Unlock()
 }
 
 func (b *Bucket) Channel(userId int) (ch *Channel) {

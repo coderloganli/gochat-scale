@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 const NoRoom = -1
@@ -53,12 +52,9 @@ func (r *Room) Put(ch *Channel) (err error) {
 func (r *Room) Push(msg *proto.Msg) {
 	r.rLock.RLock()
 	for ch := r.next; ch != nil; ch = ch.Next {
-		if err := ch.Push(msg); err != nil {
-			logrus.Infof("push msg err:%s", err.Error())
-		}
+		ch.Push(msg)
 	}
 	r.rLock.RUnlock()
-	return
 }
 
 func (r *Room) DeleteChannel(ch *Channel) bool {

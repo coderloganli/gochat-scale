@@ -77,9 +77,9 @@ func (c *Connect) Run() {
 		PongWait:        60 * time.Second,
 		PingPeriod:      54 * time.Second,
 		MaxMessageSize:  512,
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		BroadcastSize:   512,
+		ReadBufferSize:  512,
+		WriteBufferSize: 512,
+		BroadcastSize:   8,
 	})
 	c.ServerId = fmt.Sprintf("%s-%s", "ws", uuid.New().String())
 	//init Connect layer rpc server ,task layer will call this
@@ -140,9 +140,9 @@ func (c *Connect) RunTcp() {
 		PongWait:        60 * time.Second,
 		PingPeriod:      54 * time.Second,
 		MaxMessageSize:  512,
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		BroadcastSize:   512,
+		ReadBufferSize:  512,
+		WriteBufferSize: 512,
+		BroadcastSize:   8,
 	})
 	//go func() {
 	//	http.ListenAndServe("0.0.0.0:9000", nil)

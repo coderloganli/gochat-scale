@@ -17,6 +17,7 @@ type Channel struct {
 	Next      *Channel
 	Prev      *Channel
 	broadcast chan *proto.Msg
+	done      chan struct{}
 	userId    int
 	conn      *websocket.Conn
 	connTcp   *net.TCPConn
@@ -25,6 +26,7 @@ type Channel struct {
 func NewChannel(size int) (c *Channel) {
 	c = new(Channel)
 	c.broadcast = make(chan *proto.Msg, size)
+	c.done = make(chan struct{})
 	c.Next = nil
 	c.Prev = nil
 	return

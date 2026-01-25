@@ -174,3 +174,27 @@ var (
 		[]string{"service", "operation", "table"},
 	)
 )
+
+// Auth Cache Metrics
+var (
+	AuthCacheHits = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "gochat_auth_cache_hits_total",
+			Help: "Total auth cache hits",
+		},
+	)
+
+	AuthCacheMisses = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "gochat_auth_cache_misses_total",
+			Help: "Total auth cache misses",
+		},
+	)
+
+	AuthCacheSize = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "gochat_auth_cache_size",
+			Help: "Current number of entries in auth cache",
+		},
+	)
+)

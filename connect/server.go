@@ -8,11 +8,13 @@ package connect
 import (
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
+	"time"
+
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"gochat/proto"
 	"gochat/tools"
-	"time"
 )
 
 type Server struct {
@@ -71,7 +73,6 @@ func (s *Server) writePump(ch *Channel, c *Connect) {
 				logrus.Warnf(" ch.conn.NextWriter err :%s  ", err.Error())
 				return
 			}
-			logrus.Infof("message write body:%s", message.Body)
 			w.Write(message.Body)
 			if err := w.Close(); err != nil {
 				return
@@ -79,23 +80,25 @@ func (s *Server) writePump(ch *Channel, c *Connect) {
 		case <-ticker.C:
 			//heartbeat，if ping error will exit and close current websocket conn
 			ch.conn.SetWriteDeadline(time.Now().Add(s.Options.WriteWait))
-			logrus.Infof("websocket.PingMessage :%v", websocket.PingMessage)
 			if err := ch.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
+		case <-ch.done:
+			return
 		}
 	}
 }
 
 func (s *Server) readPump(ch *Channel, c *Connect) {
 	defer func() {
-		logrus.Infof("start exec disConnect ...")
+		atomic.AddInt64(&activeConnections, -1)
+		close(ch.done)
 		if ch.Room == nil || ch.userId == 0 {
-			logrus.Infof("roomId and userId eq 0")
+			logrus.Debugf("readPump closing: roomId or userId is 0")
 			ch.conn.Close()
 			return
 		}
-		logrus.Infof("exec disConnect ...")
+		logrus.Debugf("readPump exec disConnect userId=%d roomId=%d", ch.userId, ch.Room.Id)
 		disConnectRequest := new(proto.DisConnectRequest)
 		disConnectRequest.RoomId = ch.Room.Id
 		disConnectRequest.UserId = ch.userId
@@ -118,14 +121,13 @@ func (s *Server) readPump(ch *Channel, c *Connect) {
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				logrus.Errorf("readPump ReadMessage err:%s", err.Error())
-				return
 			}
+			return
 		}
 		if message == nil {
 			return
 		}
 		var connReq *proto.ConnectRequest
-		logrus.Infof("get a message :%s", message)
 		if err := json.Unmarshal([]byte(message), &connReq); err != nil {
 			logrus.Errorf("message struct %+v", connReq)
 		}
@@ -137,13 +139,20 @@ func (s *Server) readPump(ch *Channel, c *Connect) {
 		userId, err := s.operator.Connect(connReq)
 		if err != nil {
 			logrus.Errorf("s.operator.Connect error %s", err.Error())
+			// Send proper close frame before closing connection
+			ch.conn.WriteControl(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "auth failed"),
+				time.Now().Add(time.Second))
 			return
 		}
 		if userId == 0 {
 			logrus.Error("Invalid AuthToken ,userId empty")
+			ch.conn.WriteControl(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "invalid token"),
+				time.Now().Add(time.Second))
 			return
 		}
-		logrus.Infof("websocket rpc call return userId:%d,RoomId:%d", userId, connReq.RoomId)
+		logrus.Debugf("websocket rpc call return userId:%d,RoomId:%d", userId, connReq.RoomId)
 		b := s.Bucket(userId)
 		//insert into a bucket
 		err = b.Put(userId, connReq.RoomId, ch)

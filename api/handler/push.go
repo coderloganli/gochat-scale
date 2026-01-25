@@ -8,6 +8,7 @@ package handler
 import (
 	"strconv"
 
+	"gochat/api/ctxutil"
 	"gochat/api/rpc"
 	"gochat/config"
 	"gochat/proto"
@@ -31,7 +32,6 @@ func Push(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	authToken := formPush.AuthToken
 	msg := formPush.Msg
 	toUserId := formPush.ToUserId
 	toUserIdInt, _ := strconv.Atoi(toUserId)
@@ -41,10 +41,10 @@ func Push(c *gin.Context) {
 		tools.FailWithMsg(c, "rpc fail get friend userName")
 		return
 	}
-	checkAuthReq := &proto.CheckAuthRequest{AuthToken: authToken}
-	code, fromUserId, fromUserName := rpc.RpcLogicObj.CheckAuth(ctx, checkAuthReq)
-	if code == tools.CodeFail {
-		tools.FailWithMsg(c, "rpc fail get self info")
+	// Reuse auth info from middleware instead of making another RPC call
+	fromUserId, fromUserName, ok := ctxutil.GetAuthFromContext(c)
+	if !ok {
+		tools.FailWithMsg(c, "auth info not found in context")
 		return
 	}
 	roomId := formPush.RoomId
@@ -79,13 +79,12 @@ func PushRoom(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	authToken := formRoom.AuthToken
 	msg := formRoom.Msg
 	roomId := formRoom.RoomId
-	checkAuthReq := &proto.CheckAuthRequest{AuthToken: authToken}
-	authCode, fromUserId, fromUserName := rpc.RpcLogicObj.CheckAuth(ctx, checkAuthReq)
-	if authCode == tools.CodeFail {
-		tools.FailWithMsg(c, "rpc fail get self info")
+	// Reuse auth info from middleware instead of making another RPC call
+	fromUserId, fromUserName, ok := ctxutil.GetAuthFromContext(c)
+	if !ok {
+		tools.FailWithMsg(c, "auth info not found in context")
 		return
 	}
 	req := &proto.Send{

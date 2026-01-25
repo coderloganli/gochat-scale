@@ -99,6 +99,7 @@ func (c *Connect) ServeTcp(server *Server, conn *net.TCPConn, r int) {
 
 func (c *Connect) readDataFromTcp(s *Server, ch *Channel) {
 	defer func() {
+		close(ch.done)
 		logrus.Infof("start exec disConnect ...")
 		if ch.Room == nil || ch.userId == 0 {
 			logrus.Infof("roomId and userId eq 0")
@@ -243,6 +244,8 @@ func (c *Connect) writeDataToTcp(s *Server, ch *Channel) {
 				//send ping msg to tcp conn
 				return
 			}
+		case <-ch.done:
+			return
 		}
 	}
 }

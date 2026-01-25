@@ -22,6 +22,7 @@ import (
 	"github.com/rpcxio/rpcx-etcd/serverplugin"
 	"github.com/sirupsen/logrus"
 	"github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/protocol"
 	"github.com/smallnest/rpcx/server"
 )
 
@@ -52,7 +53,20 @@ func (c *Connect) InitLogicRpcClient() (err error) {
 		if e != nil {
 			logrus.Fatalf("init connect rpc etcd discovery client fail:%s", e.Error())
 		}
-		logicRpcClient = client.NewXClient(config.Conf.Common.CommonEtcd.ServerPathLogic, client.Failtry, client.RandomSelect, d, client.DefaultOption)
+		// Optimized client options for better connection reuse
+		opt := client.Option{
+			Retries:             3,
+			ConnectTimeout:      500 * time.Millisecond,
+			IdleTimeout:         0,
+			Heartbeat:           true,
+			HeartbeatInterval:   10 * time.Second,
+			MaxWaitForHeartbeat: 30 * time.Second,
+			TCPKeepAlivePeriod:  30 * time.Second,
+			BackupLatency:       10 * time.Millisecond,
+			SerializeType:       protocol.MsgPack,
+			CompressType:        protocol.None,
+		}
+		logicRpcClient = client.NewXClient(config.Conf.Common.CommonEtcd.ServerPathLogic, client.Failtry, client.RandomSelect, d, opt)
 	})
 	if logicRpcClient == nil {
 		logrus.Fatalf("get rpc client nil")
@@ -61,20 +75,26 @@ func (c *Connect) InitLogicRpcClient() (err error) {
 }
 
 func (rpc *RpcConnect) Connect(connReq *proto.ConnectRequest) (uid int, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
 	reply := &proto.ConnectReply{}
-	err = middleware.InstrumentedCall(context.Background(), logicRpcClient, "connect", "logic", "Connect", connReq, reply)
+	err = middleware.InstrumentedCall(ctx, logicRpcClient, "connect", "logic", "Connect", connReq, reply)
 	if err != nil {
-		logrus.Fatalf("failed to call: %v", err)
+		logrus.Errorf("Connect RPC call failed: %v", err)
+		return
 	}
 	uid = reply.UserId
-	logrus.Infof("connect logic userId :%d", reply.UserId)
 	return
 }
 
 func (rpc *RpcConnect) DisConnect(disConnReq *proto.DisConnectRequest) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
 	reply := &proto.DisConnectReply{}
-	if err = middleware.InstrumentedCall(context.Background(), logicRpcClient, "connect", "logic", "DisConnect", disConnReq, reply); err != nil {
-		logrus.Fatalf("failed to call: %v", err)
+	if err = middleware.InstrumentedCall(ctx, logicRpcClient, "connect", "logic", "DisConnect", disConnReq, reply); err != nil {
+		logrus.Errorf("DisConnect RPC call failed: %v", err)
 	}
 	return
 }
@@ -113,7 +133,6 @@ func (rpc *RpcConnectPush) PushSingleMsg(ctx context.Context, pushMsgReq *proto.
 		bucket  *Bucket
 		channel *Channel
 	)
-	logrus.Infof("rpc PushMsg :%v ", pushMsgReq)
 	if pushMsgReq == nil {
 		logrus.Errorf("rpc PushSingleMsg() args:(%v)", pushMsgReq)
 		return
@@ -121,19 +140,16 @@ func (rpc *RpcConnectPush) PushSingleMsg(ctx context.Context, pushMsgReq *proto.
 	bucket = DefaultServer.Bucket(pushMsgReq.UserId)
 	if channel = bucket.Channel(pushMsgReq.UserId); channel != nil {
 		err = channel.Push(&pushMsgReq.Msg)
-		logrus.Infof("DefaultServer Channel err nil ,args: %v", pushMsgReq)
 		return
 	}
 	successReply.Code = config.SuccessReplyCode
 	successReply.Msg = config.SuccessReplyMsg
-	logrus.Infof("successReply:%v", successReply)
 	return
 }
 
 func (rpc *RpcConnectPush) PushRoomMsg(ctx context.Context, pushRoomMsgReq *proto.PushRoomMsgRequest, successReply *proto.SuccessReply) (err error) {
 	successReply.Code = config.SuccessReplyCode
 	successReply.Msg = config.SuccessReplyMsg
-	logrus.Infof("PushRoomMsg msg %+v", pushRoomMsgReq)
 	for _, bucket := range DefaultServer.Buckets {
 		bucket.BroadcastRoom(pushRoomMsgReq)
 	}
@@ -143,7 +159,6 @@ func (rpc *RpcConnectPush) PushRoomMsg(ctx context.Context, pushRoomMsgReq *prot
 func (rpc *RpcConnectPush) PushRoomCount(ctx context.Context, pushRoomMsgReq *proto.PushRoomMsgRequest, successReply *proto.SuccessReply) (err error) {
 	successReply.Code = config.SuccessReplyCode
 	successReply.Msg = config.SuccessReplyMsg
-	logrus.Infof("PushRoomCount msg %v", pushRoomMsgReq)
 	for _, bucket := range DefaultServer.Buckets {
 		bucket.BroadcastRoom(pushRoomMsgReq)
 	}
@@ -153,7 +168,6 @@ func (rpc *RpcConnectPush) PushRoomCount(ctx context.Context, pushRoomMsgReq *pr
 func (rpc *RpcConnectPush) PushRoomInfo(ctx context.Context, pushRoomMsgReq *proto.PushRoomMsgRequest, successReply *proto.SuccessReply) (err error) {
 	successReply.Code = config.SuccessReplyCode
 	successReply.Msg = config.SuccessReplyMsg
-	logrus.Infof("connect,PushRoomInfo msg %+v", pushRoomMsgReq)
 	for _, bucket := range DefaultServer.Buckets {
 		bucket.BroadcastRoom(pushRoomMsgReq)
 	}

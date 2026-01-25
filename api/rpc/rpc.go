@@ -18,6 +18,7 @@ import (
 	etcdV3 "github.com/rpcxio/rpcx-etcd/client"
 	"github.com/sirupsen/logrus"
 	"github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/protocol"
 )
 
 var LogicRpcClient client.XClient
@@ -49,7 +50,20 @@ func InitLogicRpcClient() {
 		if err != nil {
 			logrus.Fatalf("init connect rpc etcd discovery client fail:%s", err.Error())
 		}
-		LogicRpcClient = client.NewXClient(config.Conf.Common.CommonEtcd.ServerPathLogic, client.Failtry, client.RandomSelect, d, client.DefaultOption)
+		// Optimized client options for better connection reuse
+		opt := client.Option{
+			Retries:             3,
+			ConnectTimeout:      500 * time.Millisecond, // Faster connection timeout
+			IdleTimeout:         0,                      // No idle timeout, keep connections alive
+			Heartbeat:           true,                   // Enable heartbeat to keep connections alive
+			HeartbeatInterval:   10 * time.Second,       // Heartbeat every 10s
+			MaxWaitForHeartbeat: 30 * time.Second,
+			TCPKeepAlivePeriod:  30 * time.Second,       // TCP keepalive
+			BackupLatency:       10 * time.Millisecond,
+			SerializeType:       protocol.MsgPack,       // Use MsgPack serialization
+			CompressType:        protocol.None,          // No compression for speed
+		}
+		LogicRpcClient = client.NewXClient(config.Conf.Common.CommonEtcd.ServerPathLogic, client.Failtry, client.RandomSelect, d, opt)
 		RpcLogicObj = new(RpcLogic)
 	})
 	if LogicRpcClient == nil {

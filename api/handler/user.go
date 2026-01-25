@@ -6,6 +6,8 @@
 package handler
 
 import (
+	"gochat/api/cache"
+	"gochat/api/ctxutil"
 	"gochat/api/rpc"
 	"gochat/pkg/metrics"
 	"gochat/proto"
@@ -74,17 +76,9 @@ type FormCheckAuth struct {
 }
 
 func CheckAuth(c *gin.Context) {
-	var formCheckAuth FormCheckAuth
-	if err := c.ShouldBindBodyWith(&formCheckAuth, binding.JSON); err != nil {
-		tools.FailWithMsg(c, err.Error())
-		return
-	}
-	authToken := formCheckAuth.AuthToken
-	req := &proto.CheckAuthRequest{
-		AuthToken: authToken,
-	}
-	code, userId, userName := rpc.RpcLogicObj.CheckAuth(c.Request.Context(), req)
-	if code == tools.CodeFail {
+	// Auth already validated by middleware, just return cached info from context
+	userId, userName, ok := ctxutil.GetAuthFromContext(c)
+	if !ok {
 		tools.FailWithMsg(c, "auth fail")
 		return
 	}
@@ -106,6 +100,10 @@ func Logout(c *gin.Context) {
 		return
 	}
 	authToken := formLogout.AuthToken
+
+	// Clear from local cache first
+	cache.GetAuthCache().Delete(authToken)
+
 	logoutReq := &proto.LogoutRequest{
 		AuthToken: authToken,
 	}

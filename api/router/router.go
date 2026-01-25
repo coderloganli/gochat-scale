@@ -6,15 +6,19 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net/http"
+
+	"gochat/api/cache"
+	"gochat/api/ctxutil"
 	"gochat/api/handler"
 	"gochat/api/rpc"
 	"gochat/pkg/middleware"
 	"gochat/proto"
 	"gochat/tools"
-	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func Register() *gin.Engine {
@@ -60,6 +64,8 @@ type FormCheckSessionId struct {
 }
 
 func CheckSessionId() gin.HandlerFunc {
+	authCache := cache.GetAuthCache()
+
 	return func(c *gin.Context) {
 		var formCheckSessionId FormCheckSessionId
 		if err := c.ShouldBindBodyWith(&formCheckSessionId, binding.JSON); err != nil {
@@ -68,6 +74,15 @@ func CheckSessionId() gin.HandlerFunc {
 			return
 		}
 		authToken := formCheckSessionId.AuthToken
+
+		// Try to get from local cache first (avoid RPC call)
+		if userId, userName, found := authCache.Get(authToken); found {
+			ctxutil.SetAuthToContext(c, userId, userName)
+			c.Next()
+			return
+		}
+
+		// Cache miss - call RPC
 		req := &proto.CheckAuthRequest{
 			AuthToken: authToken,
 		}
@@ -77,6 +92,12 @@ func CheckSessionId() gin.HandlerFunc {
 			tools.ResponseWithCode(c, tools.CodeSessionError, nil, nil)
 			return
 		}
+
+		// Store in local cache for future requests
+		authCache.Set(authToken, userId, userName)
+
+		// Store auth result in context for handlers to reuse
+		ctxutil.SetAuthToContext(c, userId, userName)
 		c.Next()
 		return
 	}

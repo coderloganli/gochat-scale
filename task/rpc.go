@@ -21,11 +21,23 @@ import (
 	etcdV3 "github.com/rpcxio/rpcx-etcd/client"
 	"github.com/sirupsen/logrus"
 	"github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/protocol"
 )
 
 var RClient = &RpcConnectClient{
 	ServerInsMap: make(map[string][]Instance),
 	IndexMap:     make(map[string]int),
+}
+
+const roomInfoMinInterval = 250 * time.Millisecond
+
+var roomInfoMu sync.Mutex
+var roomInfoEntries = make(map[int]*roomInfoEntry)
+
+type roomInfoEntry struct {
+	lastSent time.Time
+	pending  map[string]string
+	timer    *time.Timer
 }
 
 type Instance struct {
@@ -137,7 +149,20 @@ func (task *Task) watchServicesChange(d client.ServiceDiscovery) {
 				logrus.Errorf("init task client.NewPeer2PeerDiscovery watch client fail:%s", e.Error())
 				continue
 			}
-			c := client.NewXClient(etcdConfig.ServerPathConnect, client.Failtry, client.RandomSelect, d, client.DefaultOption)
+			// Optimized client options for better connection reuse
+			opt := client.Option{
+				Retries:             3,
+				ConnectTimeout:      500 * time.Millisecond,
+				IdleTimeout:         0,
+				Heartbeat:           true,
+				HeartbeatInterval:   10 * time.Second,
+				MaxWaitForHeartbeat: 30 * time.Second,
+				TCPKeepAlivePeriod:  30 * time.Second,
+				BackupLatency:       10 * time.Millisecond,
+				SerializeType:       protocol.MsgPack,
+				CompressType:        protocol.None,
+			}
+			c := client.NewXClient(etcdConfig.ServerPathConnect, client.Failtry, client.RandomSelect, d, opt)
 			ins := Instance{
 				ServerType: serverType,
 				ServerId:   serverId,
@@ -230,6 +255,51 @@ func (task *Task) broadcastRoomCountToConnect(roomId, count int) {
 }
 
 func (task *Task) broadcastRoomInfoToConnect(roomId int, roomUserInfo map[string]string) {
+	now := time.Now()
+	roomInfoMu.Lock()
+	entry := roomInfoEntries[roomId]
+	if entry == nil {
+		entry = &roomInfoEntry{}
+		roomInfoEntries[roomId] = entry
+	}
+	if entry.timer == nil && now.Sub(entry.lastSent) >= roomInfoMinInterval {
+		entry.lastSent = now
+		roomInfoMu.Unlock()
+		task.sendRoomInfoToConnect(roomId, roomUserInfo)
+		return
+	}
+	entry.pending = roomUserInfo
+	if entry.timer == nil {
+		wait := roomInfoMinInterval - now.Sub(entry.lastSent)
+		if wait < 0 {
+			wait = roomInfoMinInterval
+		}
+		entry.timer = time.AfterFunc(wait, func() {
+			task.flushRoomInfo(roomId)
+		})
+	}
+	roomInfoMu.Unlock()
+}
+
+func (task *Task) flushRoomInfo(roomId int) {
+	var pending map[string]string
+	roomInfoMu.Lock()
+	entry := roomInfoEntries[roomId]
+	if entry == nil {
+		roomInfoMu.Unlock()
+		return
+	}
+	pending = entry.pending
+	entry.pending = nil
+	entry.timer = nil
+	entry.lastSent = time.Now()
+	roomInfoMu.Unlock()
+	if pending != nil {
+		task.sendRoomInfoToConnect(roomId, pending)
+	}
+}
+
+func (task *Task) sendRoomInfoToConnect(roomId int, roomUserInfo map[string]string) {
 	msg := &proto.RedisRoomInfo{
 		Count:        len(roomUserInfo),
 		Op:           config.OpRoomInfoSend,
