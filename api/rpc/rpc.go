@@ -75,7 +75,7 @@ func (rpc *RpcLogic) Login(ctx context.Context, req *proto.LoginRequest) (code i
 	reply := &proto.LoginResponse{}
 	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "Login", req, reply)
 	if err != nil {
-		msg = err.Error()
+		return config.FailReplyCode, "", err.Error()
 	}
 	code = reply.Code
 	authToken = reply.AuthToken
@@ -86,7 +86,7 @@ func (rpc *RpcLogic) Register(ctx context.Context, req *proto.RegisterRequest) (
 	reply := &proto.RegisterReply{}
 	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "Register", req, reply)
 	if err != nil {
-		msg = err.Error()
+		return config.FailReplyCode, "", err.Error()
 	}
 	code = reply.Code
 	authToken = reply.AuthToken
@@ -95,7 +95,10 @@ func (rpc *RpcLogic) Register(ctx context.Context, req *proto.RegisterRequest) (
 
 func (rpc *RpcLogic) GetUserNameByUserId(ctx context.Context, req *proto.GetUserInfoRequest) (code int, userName string) {
 	reply := &proto.GetUserInfoResponse{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetUserInfoByUserId", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetUserInfoByUserId", req, reply)
+	if err != nil {
+		return config.FailReplyCode, ""
+	}
 	code = reply.Code
 	userName = reply.UserName
 	return
@@ -103,7 +106,10 @@ func (rpc *RpcLogic) GetUserNameByUserId(ctx context.Context, req *proto.GetUser
 
 func (rpc *RpcLogic) CheckAuth(ctx context.Context, req *proto.CheckAuthRequest) (code int, userId int, userName string) {
 	reply := &proto.CheckAuthResponse{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "CheckAuth", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "CheckAuth", req, reply)
+	if err != nil {
+		return config.FailReplyCode, 0, ""
+	}
 	code = reply.Code
 	userId = reply.UserId
 	userName = reply.UserName
@@ -112,14 +118,20 @@ func (rpc *RpcLogic) CheckAuth(ctx context.Context, req *proto.CheckAuthRequest)
 
 func (rpc *RpcLogic) Logout(ctx context.Context, req *proto.LogoutRequest) (code int) {
 	reply := &proto.LogoutResponse{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "Logout", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "Logout", req, reply)
+	if err != nil {
+		return config.FailReplyCode
+	}
 	code = reply.Code
 	return
 }
 
 func (rpc *RpcLogic) Push(ctx context.Context, req *proto.Send) (code int, msg string) {
 	reply := &proto.SuccessReply{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "Push", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "Push", req, reply)
+	if err != nil {
+		return config.FailReplyCode, err.Error()
+	}
 	code = reply.Code
 	msg = reply.Msg
 	return
@@ -127,7 +139,10 @@ func (rpc *RpcLogic) Push(ctx context.Context, req *proto.Send) (code int, msg s
 
 func (rpc *RpcLogic) PushRoom(ctx context.Context, req *proto.Send) (code int, msg string) {
 	reply := &proto.SuccessReply{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "PushRoom", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "PushRoom", req, reply)
+	if err != nil {
+		return config.FailReplyCode, err.Error()
+	}
 	code = reply.Code
 	msg = reply.Msg
 	return
@@ -135,7 +150,10 @@ func (rpc *RpcLogic) PushRoom(ctx context.Context, req *proto.Send) (code int, m
 
 func (rpc *RpcLogic) Count(ctx context.Context, req *proto.Send) (code int, msg string) {
 	reply := &proto.SuccessReply{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "Count", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "Count", req, reply)
+	if err != nil {
+		return config.FailReplyCode, err.Error()
+	}
 	code = reply.Code
 	msg = reply.Msg
 	return
@@ -143,7 +161,10 @@ func (rpc *RpcLogic) Count(ctx context.Context, req *proto.Send) (code int, msg 
 
 func (rpc *RpcLogic) GetRoomInfo(ctx context.Context, req *proto.Send) (code int, msg string) {
 	reply := &proto.SuccessReply{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetRoomInfo", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetRoomInfo", req, reply)
+	if err != nil {
+		return config.FailReplyCode, err.Error()
+	}
 	code = reply.Code
 	msg = reply.Msg
 	return
@@ -151,7 +172,10 @@ func (rpc *RpcLogic) GetRoomInfo(ctx context.Context, req *proto.Send) (code int
 
 func (rpc *RpcLogic) GetSingleChatHistory(ctx context.Context, req *proto.GetSingleChatHistoryRequest) (code int, messages []proto.MessageItem) {
 	reply := &proto.GetMessageHistoryResponse{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetSingleChatHistory", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetSingleChatHistory", req, reply)
+	if err != nil {
+		return config.FailReplyCode, nil
+	}
 	code = reply.Code
 	messages = reply.Messages
 	return
@@ -159,7 +183,10 @@ func (rpc *RpcLogic) GetSingleChatHistory(ctx context.Context, req *proto.GetSin
 
 func (rpc *RpcLogic) GetRoomHistory(ctx context.Context, req *proto.GetRoomHistoryRequest) (code int, messages []proto.MessageItem) {
 	reply := &proto.GetMessageHistoryResponse{}
-	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetRoomHistory", req, reply)
+	err := middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetRoomHistory", req, reply)
+	if err != nil {
+		return config.FailReplyCode, nil
+	}
 	code = reply.Code
 	messages = reply.Messages
 	return

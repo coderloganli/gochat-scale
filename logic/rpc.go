@@ -182,6 +182,12 @@ func (rpc *RpcLogic) Push(ctx context.Context, args *proto.Send, reply *proto.Su
 	reply.Code = config.FailReplyCode
 	sendData := args
 
+	// Set default content type if not provided
+	contentType := sendData.ContentType
+	if contentType == "" {
+		contentType = config.ContentTypeText
+	}
+
 	// Persist message to database before sending
 	msg := &dao.Message{
 		FromUserId:   sendData.FromUserId,
@@ -191,6 +197,7 @@ func (rpc *RpcLogic) Push(ctx context.Context, args *proto.Send, reply *proto.Su
 		RoomId:       0, // Single chat, no room
 		MessageType:  config.OpSingleSend,
 		Content:      sendData.Msg,
+		ContentType:  contentType,
 		CreateTime:   time.Now(),
 	}
 	if _, err = msg.Add(); err != nil {
@@ -231,6 +238,12 @@ func (rpc *RpcLogic) PushRoom(ctx context.Context, args *proto.Send, reply *prot
 	sendData := args
 	roomId := sendData.RoomId
 
+	// Set default content type if not provided
+	contentType := sendData.ContentType
+	if contentType == "" {
+		contentType = config.ContentTypeText
+	}
+
 	// Persist message to database before sending
 	msg := &dao.Message{
 		FromUserId:   sendData.FromUserId,
@@ -240,6 +253,7 @@ func (rpc *RpcLogic) PushRoom(ctx context.Context, args *proto.Send, reply *prot
 		RoomId:       roomId,
 		MessageType:  config.OpRoomSend,
 		Content:      sendData.Msg,
+		ContentType:  contentType,
 		CreateTime:   time.Now(),
 	}
 	if _, err = msg.Add(); err != nil {
@@ -407,6 +421,10 @@ func (rpc *RpcLogic) GetSingleChatHistory(ctx context.Context, args *proto.GetSi
 
 	reply.Messages = make([]proto.MessageItem, len(messages))
 	for i, m := range messages {
+		contentType := m.ContentType
+		if contentType == "" {
+			contentType = config.ContentTypeText
+		}
 		reply.Messages[i] = proto.MessageItem{
 			Id:           m.Id,
 			FromUserId:   m.FromUserId,
@@ -415,6 +433,7 @@ func (rpc *RpcLogic) GetSingleChatHistory(ctx context.Context, args *proto.GetSi
 			ToUserName:   m.ToUserName,
 			RoomId:       m.RoomId,
 			Content:      m.Content,
+			ContentType:  contentType,
 			CreateTime:   m.CreateTime.Format("2006-01-02 15:04:05"),
 		}
 	}
@@ -441,6 +460,10 @@ func (rpc *RpcLogic) GetRoomHistory(ctx context.Context, args *proto.GetRoomHist
 
 	reply.Messages = make([]proto.MessageItem, len(messages))
 	for i, m := range messages {
+		contentType := m.ContentType
+		if contentType == "" {
+			contentType = config.ContentTypeText
+		}
 		reply.Messages[i] = proto.MessageItem{
 			Id:           m.Id,
 			FromUserId:   m.FromUserId,
@@ -449,6 +472,7 @@ func (rpc *RpcLogic) GetRoomHistory(ctx context.Context, args *proto.GetRoomHist
 			ToUserName:   m.ToUserName,
 			RoomId:       m.RoomId,
 			Content:      m.Content,
+			ContentType:  contentType,
 			CreateTime:   m.CreateTime.Format("2006-01-02 15:04:05"),
 		}
 	}

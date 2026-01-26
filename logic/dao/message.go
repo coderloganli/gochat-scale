@@ -19,6 +19,7 @@ type Message struct {
 	RoomId       int       `gorm:"index"` // 0 for single messages
 	MessageType  int       // OpSingleSend (2) or OpRoomSend (3)
 	Content      string    `gorm:"type:text"`
+	ContentType  string    `gorm:"type:varchar(20);default:'text'"` // "text" or "image"
 	CreateTime   time.Time `gorm:"index"`
 	db.DbGoChat
 }

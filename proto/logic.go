@@ -82,6 +82,7 @@ type Send struct {
 	RoomId       int    `json:"roomId"`
 	Op           int    `json:"op"`
 	CreateTime   string `json:"createTime"`
+	ContentType  string `json:"contentType,omitempty"` // "text" or "image"
 }
 
 type SendTcp struct {
@@ -94,7 +95,8 @@ type SendTcp struct {
 	RoomId       int    `json:"roomId"`
 	Op           int    `json:"op"`
 	CreateTime   string `json:"createTime"`
-	AuthToken    string `json:"authToken"` // TCP only, include when sending msg
+	AuthToken    string `json:"authToken"`            // TCP only, include when sending msg
+	ContentType  string `json:"contentType,omitempty"` // "text" or "image"
 }
 
 // GetSingleChatHistoryRequest is the request for retrieving single chat history
@@ -121,6 +123,7 @@ type MessageItem struct {
 	ToUserName   string `json:"toUserName"`
 	RoomId       int    `json:"roomId"`
 	Content      string `json:"content"`
+	ContentType  string `json:"contentType"`
 	CreateTime   string `json:"createTime"`
 }
 

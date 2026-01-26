@@ -31,3 +31,10 @@ sslmode = "disable"
 maxIdleConns = 10
 maxOpenConns = 100
 connMaxLifetime = 3600
+
+[common-minio]
+endpoint = "minio:9000"
+accessKeyId = "minioadmin"
+secretAccessKey = "minioadmin"
+bucketName = "gochat-images"
+useSSL = false

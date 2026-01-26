@@ -45,6 +45,7 @@ type Message struct {
 	RoomId       int       `gorm:"index"`
 	MessageType  int
 	Content      string    `gorm:"type:text"`
+	ContentType  string    `gorm:"type:varchar(20);default:'text'"`
 	CreateTime   time.Time `gorm:"index"`
 }
 

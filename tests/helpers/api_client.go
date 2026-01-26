@@ -93,12 +93,33 @@ func (c *APIClient) Push(authToken, msg, toUserId string, roomId int) (*APIRespo
 	})
 }
 
+// PushWithContentType sends a direct message with specified content type
+func (c *APIClient) PushWithContentType(authToken, msg, toUserId string, roomId int, contentType string) (*APIResponse, error) {
+	return c.post("/push/push", map[string]interface{}{
+		"authToken":   authToken,
+		"msg":         msg,
+		"toUserId":    toUserId,
+		"roomId":      roomId,
+		"contentType": contentType,
+	})
+}
+
 // PushRoom sends a room broadcast message
 func (c *APIClient) PushRoom(authToken, msg string, roomId int) (*APIResponse, error) {
 	return c.post("/push/pushRoom", map[string]interface{}{
 		"authToken": authToken,
 		"msg":       msg,
 		"roomId":    roomId,
+	})
+}
+
+// PushRoomWithContentType sends a room broadcast message with specified content type
+func (c *APIClient) PushRoomWithContentType(authToken, msg string, roomId int, contentType string) (*APIResponse, error) {
+	return c.post("/push/pushRoom", map[string]interface{}{
+		"authToken":   authToken,
+		"msg":         msg,
+		"roomId":      roomId,
+		"contentType": contentType,
 	})
 }
 
