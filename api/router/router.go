@@ -55,6 +55,9 @@ func initPushRouter(r *gin.Engine) {
 		pushGroup.POST("/pushRoom", handler.PushRoom)
 		pushGroup.POST("/count", handler.Count)
 		pushGroup.POST("/getRoomInfo", handler.GetRoomInfo)
+		pushGroup.POST("/history/single", handler.GetSingleChatHistory)
+		pushGroup.POST("/history/room", handler.GetRoomHistory)
+		pushGroup.POST("/uploadImage", handler.UploadImage)
 	}
 
 }

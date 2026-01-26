@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"gochat/api/handler"
 	"gochat/api/router"
 	"gochat/api/rpc"
 	"gochat/config"
@@ -52,6 +53,11 @@ func (c *Chat) Run() {
 
 	//init rpc client
 	rpc.InitLogicRpcClient()
+
+	// Initialize MinIO client for image uploads
+	if err := handler.InitMinioClient(); err != nil {
+		logrus.Warnf("Failed to initialize MinIO client: %v", err)
+	}
 
 	r := router.Register()
 	runMode := config.GetGinRunMode()

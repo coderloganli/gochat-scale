@@ -1,3 +1,6 @@
 .idea
 vendor/
 loadtest/reports/
+
+# Environment configuration (each developer can customize ports)
+.env

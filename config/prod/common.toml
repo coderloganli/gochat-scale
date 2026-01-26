@@ -20,3 +20,21 @@ prefetchCount = 10
 enabled = true
 endpoint = "jaeger:4318"
 samplingRate = 0.1
+
+[common-postgresql]
+host = "postgres"
+port = 5432
+user = "gochat"
+password = "gochat_secret"
+dbname = "gochat"
+sslmode = "disable"
+maxIdleConns = 20
+maxOpenConns = 200
+connMaxLifetime = 3600
+
+[common-minio]
+endpoint = "minio:9000"
+accessKeyId = "minioadmin"
+secretAccessKey = "minioadmin"
+bucketName = "gochat-images"
+useSSL = false

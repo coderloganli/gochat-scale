@@ -93,12 +93,33 @@ func (c *APIClient) Push(authToken, msg, toUserId string, roomId int) (*APIRespo
 	})
 }
 
+// PushWithContentType sends a direct message with specified content type
+func (c *APIClient) PushWithContentType(authToken, msg, toUserId string, roomId int, contentType string) (*APIResponse, error) {
+	return c.post("/push/push", map[string]interface{}{
+		"authToken":   authToken,
+		"msg":         msg,
+		"toUserId":    toUserId,
+		"roomId":      roomId,
+		"contentType": contentType,
+	})
+}
+
 // PushRoom sends a room broadcast message
 func (c *APIClient) PushRoom(authToken, msg string, roomId int) (*APIResponse, error) {
 	return c.post("/push/pushRoom", map[string]interface{}{
 		"authToken": authToken,
 		"msg":       msg,
 		"roomId":    roomId,
+	})
+}
+
+// PushRoomWithContentType sends a room broadcast message with specified content type
+func (c *APIClient) PushRoomWithContentType(authToken, msg string, roomId int, contentType string) (*APIResponse, error) {
+	return c.post("/push/pushRoom", map[string]interface{}{
+		"authToken":   authToken,
+		"msg":         msg,
+		"roomId":      roomId,
+		"contentType": contentType,
 	})
 }
 
@@ -113,6 +134,26 @@ func (c *APIClient) Count(roomId int) (*APIResponse, error) {
 func (c *APIClient) GetRoomInfo(roomId int) (*APIResponse, error) {
 	return c.post("/push/getRoomInfo", map[string]interface{}{
 		"roomId": roomId,
+	})
+}
+
+// GetSingleChatHistory retrieves message history between two users
+func (c *APIClient) GetSingleChatHistory(authToken string, otherUserId int, limit, offset int) (*APIResponse, error) {
+	return c.post("/push/history/single", map[string]interface{}{
+		"authToken":   authToken,
+		"otherUserId": otherUserId,
+		"limit":       limit,
+		"offset":      offset,
+	})
+}
+
+// GetRoomHistory retrieves message history for a room
+func (c *APIClient) GetRoomHistory(authToken string, roomId int, limit, offset int) (*APIResponse, error) {
+	return c.post("/push/history/room", map[string]interface{}{
+		"authToken": authToken,
+		"roomId":    roomId,
+		"limit":     limit,
+		"offset":    offset,
 	})
 }
 

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Infrastructure Services
   etcd:
@@ -54,8 +52,8 @@ services:
       - rabbitmq-data:/var/lib/rabbitmq
       - ./deployments/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
     networks:
       gochat-network:
         ipv4_address: 172.28.0.12
@@ -66,6 +64,48 @@ services:
       retries: 5
       start_period: 30s
 
+  postgres:
+    image: postgres:15-alpine
+    container_name: gochat-postgres
+    environment:
+      - POSTGRES_USER=gochat
+      - POSTGRES_PASSWORD=gochat_secret
+      - POSTGRES_DB=gochat
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      gochat-network:
+        ipv4_address: 172.28.0.13
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gochat -d gochat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: minio/minio:latest
+    container_name: gochat-minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    networks:
+      gochat-network:
+        ipv4_address: 172.28.0.14
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Application Services
   logic:
     build:
@@ -75,17 +115,20 @@ services:
     environment:
       - RUN_MODE=dev
     ports:
-      - "9091:9091"
+      - "${LOGIC_METRICS_PORT:-9091}:9091"
     extra_hosts:
       - "redis:172.28.0.10"
       - "etcd:172.28.0.11"
       - "rabbitmq:172.28.0.12"
+      - "postgres:172.28.0.13"
     depends_on:
       etcd:
         condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - gochat-network
@@ -104,8 +147,8 @@ services:
     environment:
       - RUN_MODE=dev
     ports:
-      - "7000:7000"
-      - "9092:9092"
+      - "${WS_PORT:-7000}:7000"
+      - "${CONNECT_WS_METRICS_PORT:-9092}:9092"
     extra_hosts:
       - "redis:172.28.0.10"
       - "etcd:172.28.0.11"
@@ -134,9 +177,9 @@ services:
     environment:
       - RUN_MODE=dev
     ports:
-      - "7001:7001"
-      - "7002:7002"
-      - "9093:9093"
+      - "${TCP_PORT:-7001}:7001"
+      - "${TCP_PORT2:-7002}:7002"
+      - "${CONNECT_TCP_METRICS_PORT:-9093}:9093"
     extra_hosts:
       - "redis:172.28.0.10"
       - "etcd:172.28.0.11"
@@ -165,7 +208,7 @@ services:
     environment:
       - RUN_MODE=dev
     ports:
-      - "9094:9094"
+      - "${TASK_METRICS_PORT:-9094}:9094"
     extra_hosts:
       - "redis:172.28.0.10"
       - "etcd:172.28.0.11"
@@ -198,17 +241,20 @@ services:
     environment:
       - RUN_MODE=dev
     ports:
-      - "7070:7070"
+      - "${API_PORT:-7070}:7070"
     extra_hosts:
       - "redis:172.28.0.10"
       - "etcd:172.28.0.11"
       - "rabbitmq:172.28.0.12"
+      - "minio:172.28.0.14"
     depends_on:
       etcd:
         condition: service_healthy
       redis:
         condition: service_healthy
       logic:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks:
       - gochat-network
@@ -227,7 +273,7 @@ services:
     environment:
       - RUN_MODE=dev
     ports:
-      - "8080:8080"
+      - "${SITE_PORT:-8080}:8080"
     extra_hosts:
       - "redis:172.28.0.10"
       - "etcd:172.28.0.11"
@@ -257,7 +303,7 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-remote-write-receiver'
     ports:
-      - "19090:9090"
+      - "${PROMETHEUS_PORT:-19090}:9090"
     volumes:
       - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -279,7 +325,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     volumes:
       - ./deployments/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deployments/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -296,9 +342,9 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4317:4317"     # OTLP gRPC
-      - "4318:4318"     # OTLP HTTP
+      - "${JAEGER_UI_PORT:-16686}:16686"   # Jaeger UI
+      - "${JAEGER_OTLP_GRPC:-4317}:4317"   # OTLP gRPC
+      - "${JAEGER_OTLP_HTTP:-4318}:4318"   # OTLP HTTP
     networks:
       - gochat-network
     restart: unless-stopped
@@ -316,6 +362,10 @@ volumes:
   redis-data:
     driver: local
   rabbitmq-data:
+    driver: local
+  postgres-data:
+    driver: local
+  minio-data:
     driver: local
   prometheus-data:
     driver: local

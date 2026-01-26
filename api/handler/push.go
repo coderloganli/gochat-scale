@@ -19,10 +19,11 @@ import (
 )
 
 type FormPush struct {
-	Msg       string `form:"msg" json:"msg" binding:"required"`
-	ToUserId  string `form:"toUserId" json:"toUserId" binding:"required"`
-	RoomId    int    `form:"roomId" json:"roomId" binding:"required"`
-	AuthToken string `form:"authToken" json:"authToken" binding:"required"`
+	Msg         string `form:"msg" json:"msg" binding:"required"`
+	ToUserId    string `form:"toUserId" json:"toUserId" binding:"required"`
+	RoomId      int    `form:"roomId" json:"roomId" binding:"required"`
+	AuthToken   string `form:"authToken" json:"authToken" binding:"required"`
+	ContentType string `form:"contentType" json:"contentType"` // "text" or "image", defaults to "text"
 }
 
 func Push(c *gin.Context) {
@@ -48,6 +49,10 @@ func Push(c *gin.Context) {
 		return
 	}
 	roomId := formPush.RoomId
+	contentType := formPush.ContentType
+	if contentType == "" {
+		contentType = config.ContentTypeText
+	}
 	req := &proto.Send{
 		Msg:          msg,
 		FromUserId:   fromUserId,
@@ -56,6 +61,7 @@ func Push(c *gin.Context) {
 		ToUserName:   toUserName,
 		RoomId:       roomId,
 		Op:           config.OpSingleSend,
+		ContentType:  contentType,
 	}
 	code, rpcMsg := rpc.RpcLogicObj.Push(ctx, req)
 	if code == tools.CodeFail {
@@ -67,9 +73,10 @@ func Push(c *gin.Context) {
 }
 
 type FormRoom struct {
-	AuthToken string `form:"authToken" json:"authToken" binding:"required"`
-	Msg       string `form:"msg" json:"msg" binding:"required"`
-	RoomId    int    `form:"roomId" json:"roomId" binding:"required"`
+	AuthToken   string `form:"authToken" json:"authToken" binding:"required"`
+	Msg         string `form:"msg" json:"msg" binding:"required"`
+	RoomId      int    `form:"roomId" json:"roomId" binding:"required"`
+	ContentType string `form:"contentType" json:"contentType"` // "text" or "image", defaults to "text"
 }
 
 func PushRoom(c *gin.Context) {
@@ -87,12 +94,17 @@ func PushRoom(c *gin.Context) {
 		tools.FailWithMsg(c, "auth info not found in context")
 		return
 	}
+	contentType := formRoom.ContentType
+	if contentType == "" {
+		contentType = config.ContentTypeText
+	}
 	req := &proto.Send{
 		Msg:          msg,
 		FromUserId:   fromUserId,
 		FromUserName: fromUserName,
 		RoomId:       roomId,
 		Op:           config.OpRoomSend,
+		ContentType:  contentType,
 	}
 	code, msg := rpc.RpcLogicObj.PushRoom(ctx, req)
 	if code == tools.CodeFail {

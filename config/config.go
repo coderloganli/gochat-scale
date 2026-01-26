@@ -34,6 +34,12 @@ const (
 )
 
 const (
+	ContentTypeText   = "text"
+	ContentTypeImage  = "image"
+	MaxImageSizeBytes = 10 * 1024 * 1024 // 10MB
+)
+
+const (
 	RabbitMQExchange     = "gochat.direct"
 	RabbitMQQueueSingle  = "gochat.single"
 	RabbitMQQueueRoom    = "gochat.room"
@@ -162,11 +168,33 @@ type CommonTracing struct {
 	SamplingRate float64 `mapstructure:"samplingRate"`
 }
 
+type CommonPostgreSQL struct {
+	Host            string `mapstructure:"host"`
+	Port            int    `mapstructure:"port"`
+	User            string `mapstructure:"user"`
+	Password        string `mapstructure:"password"`
+	DBName          string `mapstructure:"dbname"`
+	SSLMode         string `mapstructure:"sslmode"`
+	MaxIdleConns    int    `mapstructure:"maxIdleConns"`
+	MaxOpenConns    int    `mapstructure:"maxOpenConns"`
+	ConnMaxLifetime int    `mapstructure:"connMaxLifetime"`
+}
+
+type CommonMinIO struct {
+	Endpoint        string `mapstructure:"endpoint"`
+	AccessKeyID     string `mapstructure:"accessKeyId"`
+	SecretAccessKey string `mapstructure:"secretAccessKey"`
+	BucketName      string `mapstructure:"bucketName"`
+	UseSSL          bool   `mapstructure:"useSSL"`
+}
+
 type Common struct {
-	CommonEtcd     CommonEtcd     `mapstructure:"common-etcd"`
-	CommonRedis    CommonRedis    `mapstructure:"common-redis"`
-	CommonRabbitMQ CommonRabbitMQ `mapstructure:"common-rabbitmq"`
-	CommonTracing  CommonTracing  `mapstructure:"common-tracing"`
+	CommonEtcd       CommonEtcd       `mapstructure:"common-etcd"`
+	CommonRedis      CommonRedis      `mapstructure:"common-redis"`
+	CommonRabbitMQ   CommonRabbitMQ   `mapstructure:"common-rabbitmq"`
+	CommonTracing    CommonTracing    `mapstructure:"common-tracing"`
+	CommonPostgreSQL CommonPostgreSQL `mapstructure:"common-postgresql"`
+	CommonMinIO      CommonMinIO      `mapstructure:"common-minio"`
 }
 
 type ConnectBase struct {
