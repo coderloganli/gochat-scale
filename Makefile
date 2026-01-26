@@ -292,16 +292,24 @@ ifeq ($(NOBUILD),1)
 else
 	$(LOADTEST_COMPOSE) up -d --build etcd redis rabbitmq jaeger prometheus grafana logic connect-ws connect-tcp task api
 endif
-	@echo "Waiting for services to be healthy (60s)..."
-	@sleep 60
+	@echo "Waiting for Redis to be ready..."
+	@sleep 5
+	@echo "Flushing Redis data for clean test environment..."
+	@docker exec gochat-redis redis-cli FLUSHALL || true
+	@echo "Waiting for services to be healthy (55s)..."
+	@sleep 55
 	@echo "Services ready for load testing"
 
 # Start services without rebuilding (quick start for load testing)
 loadtest-start-quick: loadtest-deps
 	@echo "Starting GoChat services for load testing (no rebuild)..."
 	$(LOADTEST_COMPOSE) up -d etcd redis rabbitmq jaeger prometheus grafana logic connect-ws connect-tcp task api
-	@echo "Waiting for services to be healthy (60s)..."
-	@sleep 60
+	@echo "Waiting for Redis to be ready..."
+	@sleep 5
+	@echo "Flushing Redis data for clean test environment..."
+	@docker exec gochat-redis redis-cli FLUSHALL || true
+	@echo "Waiting for services to be healthy (55s)..."
+	@sleep 55
 	@echo "Services ready for load testing"
 
 # Stop load testing environment
@@ -312,18 +320,20 @@ loadtest-stop:
 # Run full system load test
 loadtest-full: loadtest-start
 	@echo "Running full system load test..."
+	@echo "Metrics streaming to Prometheus - view in Grafana at http://localhost:3000"
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/full-system.js
+		k6 run --out experimental-prometheus-rw /scripts/full-system.js
 	@echo "Test complete. Report: loadtest/reports/full-system.html"
 
 # Run capacity baseline test (step-based)
 loadtest-capacity: loadtest-start
 	@echo "Running capacity baseline test..."
 	@echo "Configuration: Start=$(K6_START_VUS) End=$(K6_END_VUS) Step=$(K6_STEP_VUS)"
+	@echo "Metrics streaming to Prometheus - view in Grafana at http://localhost:3000"
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/capacity-baseline.js
+		k6 run --out experimental-prometheus-rw /scripts/capacity-baseline.js
 	@echo "Test complete. Report: loadtest/reports/capacity-baseline.html"
 
 # Run login endpoint test only
@@ -331,7 +341,7 @@ loadtest-login: loadtest-start
 	@echo "Running login endpoint load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/user-login.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/user-login.js
 	@echo "Test complete. Report: loadtest/reports/user-login.html"
 
 # Run register endpoint test only
@@ -339,7 +349,7 @@ loadtest-register: loadtest-start
 	@echo "Running register endpoint load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/user-register.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/user-register.js
 	@echo "Test complete. Report: loadtest/reports/user-register.html"
 
 # Run WebSocket endpoint test only
@@ -347,7 +357,7 @@ loadtest-websocket: loadtest-start
 	@echo "Running WebSocket load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/websocket.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/websocket.js
 	@echo "Test complete. Report: loadtest/reports/websocket.html"
 
 # Run push endpoint test only
@@ -355,7 +365,7 @@ loadtest-push: loadtest-start
 	@echo "Running push endpoint load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/push-push.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/push-push.js
 	@echo "Test complete. Report: loadtest/reports/push-push.html"
 
 # Run push room endpoint test only
@@ -363,7 +373,7 @@ loadtest-pushroom: loadtest-start
 	@echo "Running push room endpoint load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/push-room.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/push-room.js
 	@echo "Test complete. Report: loadtest/reports/push-room.html"
 
 # Run logout endpoint test only
@@ -371,7 +381,7 @@ loadtest-logout: loadtest-start
 	@echo "Running logout endpoint load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/user-logout.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/user-logout.js
 	@echo "Test complete. Report: loadtest/reports/user-logout.html"
 
 # Run checkAuth endpoint test only
@@ -379,7 +389,7 @@ loadtest-checkauth: loadtest-start
 	@echo "Running checkAuth endpoint load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/user-checkauth.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/user-checkauth.js
 	@echo "Test complete. Report: loadtest/reports/user-checkauth.html"
 
 # Run push count endpoint test only
@@ -387,7 +397,7 @@ loadtest-count: loadtest-start
 	@echo "Running push count endpoint load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/push-count.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/push-count.js
 	@echo "Test complete. Report: loadtest/reports/push-count.html"
 
 # Run room info endpoint test only
@@ -395,7 +405,7 @@ loadtest-roominfo: loadtest-start
 	@echo "Running room info endpoint load test..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/scenarios/push-roominfo.js
+		k6 run --out experimental-prometheus-rw /scripts/scenarios/push-roominfo.js
 	@echo "Test complete. Report: loadtest/reports/push-roominfo.html"
 
 # Run quick smoke test
@@ -404,7 +414,7 @@ loadtest-smoke: loadtest-start
 	$(LOADTEST_COMPOSE) run --rm \
 		-e K6_VUS=5 \
 		-e K6_DURATION=30s \
-		k6 run /scripts/full-system.js
+		k6 run --out experimental-prometheus-rw /scripts/full-system.js
 	@echo "Smoke test complete"
 
 # Run custom script
@@ -412,7 +422,7 @@ loadtest-custom: loadtest-start
 	@echo "Running custom load test: $(LOADTEST_SCRIPT)..."
 	$(LOADTEST_COMPOSE) run --rm \
 		$(K6_ENV_VARS) \
-		k6 run /scripts/$(LOADTEST_SCRIPT)
+		k6 run --out experimental-prometheus-rw /scripts/$(LOADTEST_SCRIPT)
 
 # Start Grafana for load test visualization
 loadtest-grafana:

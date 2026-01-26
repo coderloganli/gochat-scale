@@ -11,6 +11,7 @@ import (
 	"gochat/api"
 	"gochat/connect"
 	"gochat/logic"
+	"gochat/pkg/logging"
 	"gochat/site"
 	"gochat/task"
 	"os"
@@ -22,6 +23,7 @@ func main() {
 	var module string
 	flag.StringVar(&module, "module", "", "assign run module")
 	flag.Parse()
+	logging.InitFromEnv()
 	fmt.Println(fmt.Sprintf("start run %s module", module))
 	switch module {
 	case "logic":
