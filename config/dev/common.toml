@@ -20,3 +20,14 @@ prefetchCount = 10
 enabled = true
 endpoint = "jaeger:4318"
 samplingRate = 0.01
+
+[common-postgresql]
+host = "postgres"
+port = 5432
+user = "gochat"
+password = "gochat_secret"
+dbname = "gochat"
+sslmode = "disable"
+maxIdleConns = 10
+maxOpenConns = 100
+connMaxLifetime = 3600

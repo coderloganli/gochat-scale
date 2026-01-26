@@ -1,5 +1,78 @@
 # GoChat Multi-Container Deployment - Change Log
 
+## 2026-01-25
+
+### Session: Added Message Persistence and History API
+
+**Feature: Chat Message Persistence**
+- Messages are now persisted to SQLite database before delivery
+- Supports both single chat and room messages
+- Synchronous persistence ensures messages are saved reliably
+
+**logic/dao/message.go** (new file)
+- Created `Message` model with fields: Id, FromUserId, FromUserName, ToUserId, ToUserName, RoomId, MessageType, Content, CreateTime
+- Added `Add()` method for inserting messages
+- Added `GetSingleChatHistory()` for retrieving chat history between two users
+- Added `GetRoomHistory()` for retrieving room message history
+
+**db/db.go**
+- Migrated from SQLite to PostgreSQL
+- Added `User` struct for auto-migration
+- Added `Message` struct for auto-migration
+- Added auto-migration for user and message tables on database initialization
+- Added connection pool configuration (maxIdleConns, maxOpenConns, connMaxLifetime)
+
+**config/config.go**
+- Added `CommonPostgreSQL` struct with database connection settings
+
+**config/{dev,staging,prod}/common.toml**
+- Added `[common-postgresql]` section with host, port, user, password, dbname, sslmode, connection pool settings
+
+**docker-compose.yml**
+- Added PostgreSQL service (postgres:15-alpine) on 172.28.0.13
+- Added `postgres-data` volume for data persistence
+- Updated logic service to depend on postgres
+
+**logic/rpc.go**
+- Modified `Push()` to persist single chat messages before publishing to RabbitMQ
+- Modified `PushRoom()` to persist room messages before publishing to RabbitMQ
+- Added `GetSingleChatHistory()` RPC method for retrieving single chat history
+- Added `GetRoomHistory()` RPC method for retrieving room message history
+
+**proto/logic.go**
+- Added `GetSingleChatHistoryRequest` with CurrentUserId, OtherUserId, Limit, Offset
+- Added `GetRoomHistoryRequest` with RoomId, Limit, Offset
+- Added `MessageItem` for representing messages in responses
+- Added `GetMessageHistoryResponse` with Code and Messages array
+
+**api/handler/message.go** (new file)
+- Created `GetSingleChatHistory()` HTTP handler
+- Created `GetRoomHistory()` HTTP handler
+
+**api/rpc/rpc.go**
+- Added `GetSingleChatHistory()` RPC client method
+- Added `GetRoomHistory()` RPC client method
+
+**api/router/router.go**
+- Added route `POST /push/history/single` for single chat history
+- Added route `POST /push/history/room` for room chat history
+
+**tests/helpers/api_client.go**
+- Added `GetSingleChatHistory()` test client method
+- Added `GetRoomHistory()` test client method
+
+**tests/integration/message_history_test.go** (new file)
+- Added integration tests for single chat history retrieval
+- Added integration tests for room chat history retrieval
+- Added tests for pagination and invalid token handling
+
+**scripts/perf-optimization.sh** (new file)
+- Created functional test script for message persistence feature
+- Tests user registration, message sending, and history retrieval
+- Validates both single chat and room message persistence
+
+---
+
 ## 2025-12-30
 
 ### Session 3: Added CI/CD Pipeline

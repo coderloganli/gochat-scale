@@ -116,6 +116,26 @@ func (c *APIClient) GetRoomInfo(roomId int) (*APIResponse, error) {
 	})
 }
 
+// GetSingleChatHistory retrieves message history between two users
+func (c *APIClient) GetSingleChatHistory(authToken string, otherUserId int, limit, offset int) (*APIResponse, error) {
+	return c.post("/push/history/single", map[string]interface{}{
+		"authToken":   authToken,
+		"otherUserId": otherUserId,
+		"limit":       limit,
+		"offset":      offset,
+	})
+}
+
+// GetRoomHistory retrieves message history for a room
+func (c *APIClient) GetRoomHistory(authToken string, roomId int, limit, offset int) (*APIResponse, error) {
+	return c.post("/push/history/room", map[string]interface{}{
+		"authToken": authToken,
+		"roomId":    roomId,
+		"limit":     limit,
+		"offset":    offset,
+	})
+}
+
 func (c *APIClient) post(path string, body interface{}) (*APIResponse, error) {
 	jsonData, err := json.Marshal(body)
 	if err != nil {

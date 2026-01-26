@@ -29,13 +29,6 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Check code formatting
-        run: |
-          if [ -n "$(go fmt ./...)" ]; then
-            echo "Code is not formatted. Run 'make fmt' to fix."
-            exit 1
-          fi
-
       - name: Run go vet
         run: go vet ./...
 

@@ -94,5 +94,38 @@ type SendTcp struct {
 	RoomId       int    `json:"roomId"`
 	Op           int    `json:"op"`
 	CreateTime   string `json:"createTime"`
-	AuthToken    string `json:"authToken"` //仅tcp时使用，发送msg时带上
+	AuthToken    string `json:"authToken"` // TCP only, include when sending msg
+}
+
+// GetSingleChatHistoryRequest is the request for retrieving single chat history
+type GetSingleChatHistoryRequest struct {
+	CurrentUserId int `json:"currentUserId"` // The current user's ID
+	OtherUserId   int `json:"otherUserId"`   // The other user's ID
+	Limit         int `json:"limit"`
+	Offset        int `json:"offset"`
+}
+
+// GetRoomHistoryRequest is the request for retrieving room chat history
+type GetRoomHistoryRequest struct {
+	RoomId int `json:"roomId"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+// MessageItem represents a single message in the history response
+type MessageItem struct {
+	Id           int    `json:"id"`
+	FromUserId   int    `json:"fromUserId"`
+	FromUserName string `json:"fromUserName"`
+	ToUserId     int    `json:"toUserId"`
+	ToUserName   string `json:"toUserName"`
+	RoomId       int    `json:"roomId"`
+	Content      string `json:"content"`
+	CreateTime   string `json:"createTime"`
+}
+
+// GetMessageHistoryResponse is the response for message history requests
+type GetMessageHistoryResponse struct {
+	Code     int           `json:"code"`
+	Messages []MessageItem `json:"messages"`
 }

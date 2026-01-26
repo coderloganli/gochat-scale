@@ -9,14 +9,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gochat/config"
 	"gochat/logic/dao"
 	"gochat/proto"
 	"gochat/tools"
-	"strconv"
-	"time"
 )
 
 type RpcLogic struct {
@@ -180,6 +181,23 @@ single send msg
 func (rpc *RpcLogic) Push(ctx context.Context, args *proto.Send, reply *proto.SuccessReply) (err error) {
 	reply.Code = config.FailReplyCode
 	sendData := args
+
+	// Persist message to database before sending
+	msg := &dao.Message{
+		FromUserId:   sendData.FromUserId,
+		FromUserName: sendData.FromUserName,
+		ToUserId:     sendData.ToUserId,
+		ToUserName:   sendData.ToUserName,
+		RoomId:       0, // Single chat, no room
+		MessageType:  config.OpSingleSend,
+		Content:      sendData.Msg,
+		CreateTime:   time.Now(),
+	}
+	if _, err = msg.Add(); err != nil {
+		logrus.Errorf("logic,push persist msg fail,err:%s", err.Error())
+		return
+	}
+
 	var bodyBytes []byte
 	bodyBytes, err = json.Marshal(sendData)
 	if err != nil {
@@ -212,6 +230,23 @@ func (rpc *RpcLogic) PushRoom(ctx context.Context, args *proto.Send, reply *prot
 	reply.Code = config.FailReplyCode
 	sendData := args
 	roomId := sendData.RoomId
+
+	// Persist message to database before sending
+	msg := &dao.Message{
+		FromUserId:   sendData.FromUserId,
+		FromUserName: sendData.FromUserName,
+		ToUserId:     0, // Room message, no specific recipient
+		ToUserName:   "",
+		RoomId:       roomId,
+		MessageType:  config.OpRoomSend,
+		Content:      sendData.Msg,
+		CreateTime:   time.Now(),
+	}
+	if _, err = msg.Add(); err != nil {
+		logrus.Errorf("logic,PushRoom persist msg fail,err:%s", err.Error())
+		return
+	}
+
 	logic := new(Logic)
 	roomUserInfo := make(map[string]string)
 	roomUserKey := logic.getRoomUserKey(strconv.Itoa(roomId))
@@ -350,5 +385,73 @@ func (rpc *RpcLogic) DisConnect(ctx context.Context, args *proto.DisConnectReque
 		logrus.Warnf("publish RedisPublishRoomCount err: %s", err.Error())
 		return
 	}
+	return
+}
+
+// GetSingleChatHistory retrieves message history between the current user and another user
+func (rpc *RpcLogic) GetSingleChatHistory(ctx context.Context, args *proto.GetSingleChatHistoryRequest, reply *proto.GetMessageHistoryResponse) (err error) {
+	reply.Code = config.FailReplyCode
+
+	// Set default limit if not provided
+	limit := args.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	msg := new(dao.Message)
+	messages, err := msg.GetSingleChatHistory(args.CurrentUserId, args.OtherUserId, limit, args.Offset)
+	if err != nil {
+		logrus.Errorf("logic,GetSingleChatHistory fail,err:%s", err.Error())
+		return
+	}
+
+	reply.Messages = make([]proto.MessageItem, len(messages))
+	for i, m := range messages {
+		reply.Messages[i] = proto.MessageItem{
+			Id:           m.Id,
+			FromUserId:   m.FromUserId,
+			FromUserName: m.FromUserName,
+			ToUserId:     m.ToUserId,
+			ToUserName:   m.ToUserName,
+			RoomId:       m.RoomId,
+			Content:      m.Content,
+			CreateTime:   m.CreateTime.Format("2006-01-02 15:04:05"),
+		}
+	}
+	reply.Code = config.SuccessReplyCode
+	return
+}
+
+// GetRoomHistory retrieves message history for a room
+func (rpc *RpcLogic) GetRoomHistory(ctx context.Context, args *proto.GetRoomHistoryRequest, reply *proto.GetMessageHistoryResponse) (err error) {
+	reply.Code = config.FailReplyCode
+
+	// Set default limit if not provided
+	limit := args.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	msg := new(dao.Message)
+	messages, err := msg.GetRoomHistory(args.RoomId, limit, args.Offset)
+	if err != nil {
+		logrus.Errorf("logic,GetRoomHistory fail,err:%s", err.Error())
+		return
+	}
+
+	reply.Messages = make([]proto.MessageItem, len(messages))
+	for i, m := range messages {
+		reply.Messages[i] = proto.MessageItem{
+			Id:           m.Id,
+			FromUserId:   m.FromUserId,
+			FromUserName: m.FromUserName,
+			ToUserId:     m.ToUserId,
+			ToUserName:   m.ToUserName,
+			RoomId:       m.RoomId,
+			Content:      m.Content,
+			CreateTime:   m.CreateTime.Format("2006-01-02 15:04:05"),
+		}
+	}
+	reply.Code = config.SuccessReplyCode
 	return
 }

@@ -148,3 +148,19 @@ func (rpc *RpcLogic) GetRoomInfo(ctx context.Context, req *proto.Send) (code int
 	msg = reply.Msg
 	return
 }
+
+func (rpc *RpcLogic) GetSingleChatHistory(ctx context.Context, req *proto.GetSingleChatHistoryRequest) (code int, messages []proto.MessageItem) {
+	reply := &proto.GetMessageHistoryResponse{}
+	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetSingleChatHistory", req, reply)
+	code = reply.Code
+	messages = reply.Messages
+	return
+}
+
+func (rpc *RpcLogic) GetRoomHistory(ctx context.Context, req *proto.GetRoomHistoryRequest) (code int, messages []proto.MessageItem) {
+	reply := &proto.GetMessageHistoryResponse{}
+	middleware.InstrumentedCall(ctx, LogicRpcClient, "api", "logic", "GetRoomHistory", req, reply)
+	code = reply.Code
+	messages = reply.Messages
+	return
+}
