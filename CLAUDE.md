@@ -38,6 +38,10 @@ make loadtest-full K6_VUS=100 K6_DURATION=5m
 make loadtest-{login,register,websocket,push,pushroom}  # Single endpoint
 ```
 
+Measured results and bottleneck analysis: `docs/benchmarks.md`. Tracked
+evidence lives in `loadtest/reports/*-steps.json`; do not quote a figure
+that no tracked file backs.
+
 ### Building
 ```bash
 make build-binary             # Build Linux binary to bin/gochat

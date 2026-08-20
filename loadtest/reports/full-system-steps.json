@@ -1,0 +1,115 @@
+{
+  "slo": {
+    "p95_ms": 500,
+    "p99_ms": null,
+    "error_rate": 0.01,
+    "timeout_rate": 0
+  },
+  "capacity": {
+    "step": 2,
+    "vus": 2000,
+    "rps": 5831.7,
+    "itersPerSec": 416.55
+  },
+  "bottleneck": {
+    "step": 3,
+    "vus": 3000,
+    "rps": 5424.3,
+    "reasons": [
+      "p95 latency exceeded (1029ms > 500ms)"
+    ]
+  },
+  "rows": [
+    {
+      "step": 1,
+      "vus": 1000,
+      "rps": 5084.1,
+      "itersPerSec": 363.15,
+      "errorRate": 0,
+      "timeoutRate": 0,
+      "p90": 95,
+      "p95": 129,
+      "p99": 190,
+      "http4xx": 0,
+      "http5xx": 0,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": true,
+      "failReasons": []
+    },
+    {
+      "step": 2,
+      "vus": 2000,
+      "rps": 5831.7,
+      "itersPerSec": 416.55,
+      "errorRate": 0,
+      "timeoutRate": 0,
+      "p90": 392,
+      "p95": 476.95000000001164,
+      "p99": 780.9899999999907,
+      "http4xx": 0,
+      "http5xx": 0,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": true,
+      "failReasons": []
+    },
+    {
+      "step": 3,
+      "vus": 3000,
+      "rps": 5424.3,
+      "itersPerSec": 387.45,
+      "errorRate": 0,
+      "timeoutRate": 0,
+      "p90": 798,
+      "p95": 1029.149999999965,
+      "p99": 2937,
+      "http4xx": 0,
+      "http5xx": 0,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": false,
+      "failReasons": [
+        "p95 latency exceeded (1029ms > 500ms)"
+      ]
+    },
+    {
+      "step": 4,
+      "vus": 4000,
+      "rps": 5415.9,
+      "itersPerSec": 386.85,
+      "errorRate": 0,
+      "timeoutRate": 0,
+      "p90": 1103,
+      "p95": 1428,
+      "p99": 2972.469999999972,
+      "http4xx": 0,
+      "http5xx": 0,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": false,
+      "failReasons": [
+        "p95 latency exceeded (1428ms > 500ms)"
+      ]
+    },
+    {
+      "step": 5,
+      "vus": 5000,
+      "rps": 3591.233333333333,
+      "itersPerSec": 256.51666666666665,
+      "errorRate": 0,
+      "timeoutRate": 0,
+      "p90": 3423,
+      "p95": 4673.349999999977,
+      "p99": 7591.539999999979,
+      "http4xx": 0,
+      "http5xx": 0,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": false,
+      "failReasons": [
+        "p95 latency exceeded (4673ms > 500ms)"
+      ]
+    }
+  ]
+}

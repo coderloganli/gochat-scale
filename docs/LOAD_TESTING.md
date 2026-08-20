@@ -2,6 +2,9 @@
 
 GoChat 压测框架使用 [Grafana k6](https://k6.io/) 进行负载测试，支持 HTTP API 和 WebSocket 端点测试。
 
+> Measured results and bottleneck analysis are in [benchmarks.md](./benchmarks.md).
+> This document only covers how to run the tests.
+
 ## 快速开始
 
 ```bash

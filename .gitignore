@@ -1,6 +1,9 @@
 .idea
 vendor/
-loadtest/reports/
+loadtest/reports/*
+# Keep the small evidence files behind docs/benchmarks.md; the bulky
+# generated HTML and raw k6 JSON stay ignored.
+!loadtest/reports/*-steps.json
 
 # Build output
 bin/

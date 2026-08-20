@@ -2,10 +2,14 @@
 package cache
 
 import (
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
 	"gochat/pkg/metrics"
+
+	"github.com/sirupsen/logrus"
 )
 
 // AuthCacheEntry stores cached auth result
@@ -21,6 +25,39 @@ type AuthCache struct {
 	mu      sync.RWMutex
 	entries map[string]*AuthCacheEntry
 	ttl     time.Duration
+	enabled bool
+}
+
+const (
+	// defaultTTL bounds how long a revoked token keeps working. Logout deletes
+	// the entry on the API instance that served it, so this is the worst case
+	// for the other instances.
+	defaultTTL = 30 * time.Second
+)
+
+// config reads the cache settings from the environment. The cache can be turned
+// off so that the same build can be measured with and without it; the A/B is
+// what makes the latency claim in docs/benchmarks.md reproducible.
+func config() (enabled bool, ttl time.Duration) {
+	enabled = true
+	if v := os.Getenv("AUTH_CACHE_ENABLED"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			logrus.Warnf("invalid AUTH_CACHE_ENABLED %q, keeping the cache enabled", v)
+		} else {
+			enabled = parsed
+		}
+	}
+	ttl = defaultTTL
+	if v := os.Getenv("AUTH_CACHE_TTL"); v != "" {
+		parsed, err := time.ParseDuration(v)
+		if err != nil || parsed <= 0 {
+			logrus.Warnf("invalid AUTH_CACHE_TTL %q, keeping %s", v, defaultTTL)
+		} else {
+			ttl = parsed
+		}
+	}
+	return enabled, ttl
 }
 
 // Global auth cache instance
@@ -32,10 +69,17 @@ var (
 // GetAuthCache returns the singleton auth cache instance
 func GetAuthCache() *AuthCache {
 	cacheOnce.Do(func() {
+		enabled, ttl := config()
 		globalAuthCache = &AuthCache{
 			entries: make(map[string]*AuthCacheEntry),
-			ttl:     30 * time.Second, // Cache auth for 30 seconds
+			ttl:     ttl,
+			enabled: enabled,
 		}
+		if !enabled {
+			logrus.Warn("auth cache disabled, every request will hit the logic RPC")
+			return
+		}
+		logrus.Infof("auth cache enabled, ttl %s", ttl)
 		// Start background cleanup goroutine
 		go globalAuthCache.cleanupLoop()
 	})
@@ -45,6 +89,10 @@ func GetAuthCache() *AuthCache {
 // Get retrieves auth info from cache
 // Returns (userId, userName, found)
 func (c *AuthCache) Get(token string) (int, string, bool) {
+	if !c.enabled {
+		metrics.AuthCacheMisses.Inc()
+		return 0, "", false
+	}
 	c.mu.RLock()
 	entry, ok := c.entries[token]
 	c.mu.RUnlock()
@@ -70,6 +118,9 @@ func (c *AuthCache) Get(token string) (int, string, bool) {
 
 // Set stores auth info in cache
 func (c *AuthCache) Set(token string, userId int, userName string) {
+	if !c.enabled {
+		return
+	}
 	c.mu.Lock()
 	c.entries[token] = &AuthCacheEntry{
 		UserId:    userId,
@@ -81,6 +132,9 @@ func (c *AuthCache) Set(token string, userId int, userName string) {
 
 // Delete removes a token from cache (used on logout)
 func (c *AuthCache) Delete(token string) {
+	if !c.enabled {
+		return
+	}
 	c.mu.Lock()
 	delete(c.entries, token)
 	c.mu.Unlock()

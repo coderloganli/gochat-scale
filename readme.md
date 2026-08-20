@@ -2,6 +2,23 @@
 
 > This is a fork of [LockGit/gochat](https://github.com/LockGit/gochat) with Docker Compose multi-container deployment support.
 
+## Measured Capacity
+
+Numbers from `loadtest/reports/`, tracked in git so they can be checked:
+
+| Workload | Sustained | Throughput | p95 | Breaks at |
+|---|---|---|---|---|
+| Full-system mix (HTTP + WebSocket) | 2,000 VUs | 5,832 req/s (~4,166 msg/s) | 477 ms | 3,000 VUs |
+| Capacity baseline (HTTP) | 550 VUs | 3,906 req/s | 220 ms | 600 VUs |
+
+Both mixes plateau near 5,700 req/s, and the baseline run shows the service
+collapsing without shedding load past its knee — no 429s, no 5xx, just clients
+timing out. Method, full per-step tables, the analysis and the known gaps are in
+**[docs/benchmarks.md](./docs/benchmarks.md)**.
+
+> Measured on `78bce1c`, before the PostgreSQL and bcrypt changes. See the doc
+> for what that invalidates.
+
 ## What's New
 
 This fork adds **production-ready multi-container deployment** to the original gochat project:
@@ -72,6 +89,8 @@ make compose-prod HOST_IP=<your-server-ip>
 > you want those runs to measure the service rather than the KDF, and say so when
 > reporting the numbers.
 ## Load Testing Model
+
+Results and analysis live in [docs/benchmarks.md](./docs/benchmarks.md).
 
 This repo includes a k6-based load testing model under `loadtest/`. It uses a step-based ramp model with explicit phases:
 
