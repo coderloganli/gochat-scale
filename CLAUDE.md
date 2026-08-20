@@ -122,6 +122,16 @@ Scale services: `docker compose up --scale logic=3 --scale connect-ws=2`
 
 All services expose Prometheus metrics. Scraped by Prometheus, visualized in Grafana dashboards at `deployments/grafana/`.
 
+## Documentation
+
+- `docs/product.md` - what the product is, who it is for, and what it
+  deliberately does not do.
+- `docs/architecture.md` - the shape of the system, what holds state, and the
+  known structural gaps.
+- `docs/adr/` - one decision per file. Search it rather than reading it.
+- `docs/benchmarks.md` - measured capacity and bottleneck analysis.
+
+When a decision changes, edit its record in place rather than adding a new one.
 ## Coding Style
 
 - All code and comments must be written in English.

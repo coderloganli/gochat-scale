@@ -143,7 +143,12 @@ Scenarios under `loadtest/scripts/scenarios/` (login, register, websocket, push,
 
 ## Documentation
 
-- **Multi-Container Guide**: See [README-compose.md](./README-compose.md)
+- **Product**: what this is and what it deliberately is not — [docs/product.md](./docs/product.md)
+- **Architecture**: services, state, and known gaps — [docs/architecture.md](./docs/architecture.md)
+- **Decisions**: one per file — [docs/adr/](./docs/adr/)
+- **Benchmarks**: measured capacity and bottleneck analysis — [docs/benchmarks.md](./docs/benchmarks.md)
+- **Load testing**: how to run the tests — [docs/LOAD_TESTING.md](./docs/LOAD_TESTING.md)
+- **Observability**: [docs/observability.md](./docs/observability.md)
 - **Original Documentation**: See below or visit [github.com/LockGit/gochat](https://github.com/LockGit/gochat)
 
 ---
