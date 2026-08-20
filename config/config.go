@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -109,7 +110,35 @@ func Init() {
 		viper.Unmarshal(&Conf.Logic)
 		viper.Unmarshal(&Conf.Api)
 		viper.Unmarshal(&Conf.Site)
+		applyDBEnvOverrides(&Conf.Common.CommonDB)
 	})
+}
+
+// applyDBEnvOverrides lets the deployment supply database connection details
+// through the environment. Credentials belong in the orchestrator's secret
+// store, not in a TOML file committed to the repository; the file values are
+// development defaults.
+func applyDBEnvOverrides(c *CommonDB) {
+	if v := os.Getenv("DB_HOST"); v != "" {
+		c.Host = v
+	}
+	if v := os.Getenv("DB_PORT"); v != "" {
+		if port, err := strconv.Atoi(v); err == nil {
+			c.Port = port
+		}
+	}
+	if v := os.Getenv("DB_USER"); v != "" {
+		c.User = v
+	}
+	if v := os.Getenv("DB_PASSWORD"); v != "" {
+		c.Password = v
+	}
+	if v := os.Getenv("DB_NAME"); v != "" {
+		c.DbName = v
+	}
+	if v := os.Getenv("DB_SSLMODE"); v != "" {
+		c.SslMode = v
+	}
 }
 
 func GetMode() string {
@@ -151,6 +180,18 @@ type CommonRedis struct {
 	Db            int    `mapstructure:"db"`
 }
 
+type CommonDB struct {
+	Host            string `mapstructure:"host"`
+	Port            int    `mapstructure:"port"`
+	User            string `mapstructure:"user"`
+	Password        string `mapstructure:"password"`
+	DbName          string `mapstructure:"dbName"`
+	SslMode         string `mapstructure:"sslMode"`
+	MaxIdleConns    int    `mapstructure:"maxIdleConns"`
+	MaxOpenConns    int    `mapstructure:"maxOpenConns"`
+	ConnMaxLifetime int    `mapstructure:"connMaxLifetime"`
+}
+
 type CommonRabbitMQ struct {
 	URL           string `mapstructure:"url"`
 	PrefetchCount int    `mapstructure:"prefetchCount"`
@@ -165,6 +206,7 @@ type CommonTracing struct {
 type Common struct {
 	CommonEtcd     CommonEtcd     `mapstructure:"common-etcd"`
 	CommonRedis    CommonRedis    `mapstructure:"common-redis"`
+	CommonDB       CommonDB       `mapstructure:"common-db"`
 	CommonRabbitMQ CommonRabbitMQ `mapstructure:"common-rabbitmq"`
 	CommonTracing  CommonTracing  `mapstructure:"common-tracing"`
 }

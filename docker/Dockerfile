@@ -13,9 +13,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary with CGO enabled for SQLite support
-# CGO_CFLAGS fix compile sqlite3 warning
-RUN CGO_ENABLED=1 GOOS=linux CGO_CFLAGS="-g -O2 -Wno-return-local-addr" \
+# The PostgreSQL driver is pure Go, so the binary can be built without cgo.
+RUN CGO_ENABLED=0 GOOS=linux \
     go build -tags=etcd -ldflags="-w -s" -o gochat main.go
 
 # Stage 2: Runtime - Minimal runtime image
@@ -26,7 +25,6 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    sqlite3 \
     netcat-openbsd \
     procps \
     && rm -rf /var/lib/apt/lists/*
@@ -37,7 +35,6 @@ COPY --from=builder /build/gochat /app/
 # Copy application files
 COPY --from=builder /build/config /app/config
 COPY --from=builder /build/site /app/site
-COPY --from=builder /build/db /app/db
 
 # Create symlink so config.go can find config files at build path
 RUN mkdir -p /build && ln -s /app/config /build/config

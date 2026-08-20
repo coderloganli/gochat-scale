@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gochat/config"
 	"gochat/logic/dao"
+	"gochat/pkg/password"
 	"gochat/proto"
 	"gochat/tools"
 	"strconv"
@@ -24,15 +25,23 @@ type RpcLogic struct {
 
 func (rpc *RpcLogic) Register(ctx context.Context, args *proto.RegisterRequest, reply *proto.RegisterReply) (err error) {
 	reply.Code = config.FailReplyCode
+	if args.Name == "" || args.Password == "" {
+		return errors.New("user name or password empty!")
+	}
 	u := new(dao.User)
-	uData := u.CheckHaveUserName(args.Name)
-	if uData.Id > 0 {
-		return errors.New("this user name already have , please login !!!")
+	// The stored value is a bcrypt hash; the plaintext never reaches the database.
+	hashed, err := password.Hash(args.Password)
+	if err != nil {
+		logrus.Infof("register hash password err:%s", err.Error())
+		return err
 	}
 	u.UserName = args.Name
-	u.Password = args.Password
+	u.Password = hashed
 	userId, err := u.Add()
 	if err != nil {
+		if errors.Is(err, dao.ErrUserNameTaken) {
+			return errors.New("this user name already have , please login !!!")
+		}
 		logrus.Infof("register err:%s", err.Error())
 		return err
 	}
@@ -63,8 +72,21 @@ func (rpc *RpcLogic) Login(ctx context.Context, args *proto.LoginRequest, reply 
 	u := new(dao.User)
 	userName := args.Name
 	passWord := args.Password
-	data := u.CheckHaveUserName(userName)
-	if (data.Id == 0) || (passWord != data.Password) {
+	if userName == "" || passWord == "" {
+		return errors.New("no this user or password error!")
+	}
+	data, err := u.CheckHaveUserName(userName)
+	if err != nil {
+		logrus.Infof("login query user err:%s", err.Error())
+		return errors.New("no this user or password error!")
+	}
+	if data.Id == 0 {
+		// Spend the same time as a real verification so that a missing user and
+		// a wrong password cannot be told apart by response time.
+		password.VerifyDummy(passWord)
+		return errors.New("no this user or password error!")
+	}
+	if !password.Verify(data.Password, passWord) {
 		return errors.New("no this user or password error!")
 	}
 	loginSessionId := tools.GetSessionIdByUserId(data.Id)
@@ -104,7 +126,11 @@ func (rpc *RpcLogic) GetUserInfoByUserId(ctx context.Context, args *proto.GetUse
 	reply.Code = config.FailReplyCode
 	userId := args.UserId
 	u := new(dao.User)
-	userName := u.GetUserNameByUserId(userId)
+	userName, err := u.GetUserNameByUserId(userId)
+	if err != nil {
+		logrus.Infof("get user info err:%s", err.Error())
+		return err
+	}
 	reply.UserId = userId
 	reply.UserName = userName
 	reply.Code = config.SuccessReplyCode

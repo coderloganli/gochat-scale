@@ -79,6 +79,10 @@ jobs:
           echo "Waiting for etcd..."
           timeout 60 bash -c 'until docker exec gochat-etcd etcdctl endpoint health 2>/dev/null; do sleep 2; done' || true
 
+          # Wait for postgres
+          echo "Waiting for postgres..."
+          timeout 60 bash -c 'until docker exec gochat-postgres pg_isready -U gochat -d gochat 2>/dev/null; do sleep 2; done' || true
+
           # Wait for redis
           echo "Waiting for redis..."
           timeout 60 bash -c 'until docker exec gochat-redis redis-cli ping 2>/dev/null | grep -q PONG; do sleep 2; done' || true

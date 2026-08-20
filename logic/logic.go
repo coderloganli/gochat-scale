@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"gochat/config"
+	"gochat/db"
 	"gochat/pkg/metrics"
 	"gochat/pkg/tracing"
 
@@ -52,6 +53,12 @@ func (logic *Logic) Run() {
 
 	//init metrics server
 	metrics.StartMetricsServer(9091)
+
+	//init database connection pool, shared by all logic replicas
+	if err := db.Init(); err != nil {
+		logrus.Panicf("logic init db fail,err:%s", err.Error())
+	}
+	db.InitInstrumentedDB(db.DefaultDbName, "logic")
 
 	//init publish redis
 	if err := logic.InitPublishRedisClient(); err != nil {

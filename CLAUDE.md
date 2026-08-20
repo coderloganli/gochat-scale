@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GoChat is a scalable real-time chat application with microservices architecture. It uses etcd for service discovery, Redis for pub/sub messaging, and supports horizontal scaling of all application services.
+GoChat is a scalable real-time chat application with microservices architecture. It uses etcd for service discovery, RabbitMQ for message fan-out, Redis for session storage, PostgreSQL for user data, and supports horizontal scaling of all application services.
 
 ## Common Commands
 
@@ -63,6 +63,7 @@ gochat -module {logic|connect_websocket|connect_tcp|task|api|site}
 | task | 6923 (RPC), 9094 (metrics) | Async message processor |
 | site | 8080, 9096 (metrics) | Frontend static files |
 | etcd | 2379 | Service discovery |
+| postgres | 5432 | User accounts (shared by all logic replicas) |
 | redis | 6379 | Pub/sub, cache |
 
 ### Request Flow
@@ -72,7 +73,7 @@ gochat -module {logic|connect_websocket|connect_tcp|task|api|site}
 4. Task → Connect (RPC) → Client delivery
 
 ### Key Directories
-- `logic/` - Business logic service (auth, database via GORM/SQLite)
+- `logic/` - Business logic service (auth, database via GORM/PostgreSQL)
 - `connect/` - Connection handlers (websocket.go, server_tcp.go, room.go)
 - `api/handler/` - REST endpoints (user.go, push.go)
 - `task/` - Message queue processor (queue.go, push.go)
@@ -82,10 +83,29 @@ gochat -module {logic|connect_websocket|connect_tcp|task|api|site}
 
 ### Configuration
 TOML configs in `config/{env}/`:
-- `common.toml` - etcd/redis connection
+- `common.toml` - etcd/redis/postgres/rabbitmq connection
 - `{service}.toml` - Per-service config (ports, resources)
 
 Environment loaded via Viper in `config/config.go`.
+
+### Database
+
+User accounts live in PostgreSQL. All logic replicas share one database, which
+is what makes `--scale logic=N` correct: any replica can serve any user.
+
+- Schema lives in `db/migrations/`, applied automatically by the postgres
+  container on first start, or manually with `make db-migrate`.
+- Connection settings come from `[common-db]` in `config/{env}/common.toml`.
+  `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` and `DB_SSLMODE`
+  override them, which is how deployments inject credentials.
+- `make db-shell` opens a psql session against the running container.
+
+### Passwords
+
+Passwords are hashed with bcrypt in `pkg/password`. Never store or compare a
+plaintext password. `GOCHAT_BCRYPT_COST` lowers the cost factor for load tests
+so that the login path measures the service rather than the KDF; it must not be
+lowered outside load testing.
 
 ## Docker Compose
 

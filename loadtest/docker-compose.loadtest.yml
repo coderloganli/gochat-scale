@@ -33,6 +33,16 @@ services:
           cpus: '0.1'
           memory: 64M
 
+  postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
   # Override application services with resource limits (halved for bottleneck testing)
   logic:
     environment:

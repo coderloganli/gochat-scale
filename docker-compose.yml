@@ -42,6 +42,27 @@ services:
       retries: 5
       start_period: 5s
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: gochat-postgres
+    environment:
+      - POSTGRES_USER=gochat
+      - POSTGRES_PASSWORD=gochat_secret
+      - POSTGRES_DB=gochat
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Runs once, when the data volume is first created.
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      gochat-network:
+        ipv4_address: 172.28.0.13
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gochat -d gochat"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
     container_name: gochat-rabbitmq
@@ -74,18 +95,23 @@ services:
     command: ["/app/gochat", "-module", "logic"]
     environment:
       - RUN_MODE=dev
-    ports:
-      - "9091:9091"
+      - DB_PASSWORD=gochat_secret
+    # No published host port: it would collide under `--scale logic=N`.
+    # Prometheus scrapes 9091 over the compose network; the dev overlay
+    # publishes it for local debugging.
     extra_hosts:
       - "redis:172.28.0.10"
       - "etcd:172.28.0.11"
       - "rabbitmq:172.28.0.12"
+      - "postgres:172.28.0.13"
     depends_on:
       etcd:
         condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - gochat-network
@@ -312,6 +338,8 @@ networks:
 
 volumes:
   etcd-data:
+    driver: local
+  postgres-data:
     driver: local
   redis-data:
     driver: local

@@ -12,7 +12,13 @@ services:
     ports:
       - "6379:6379"  # Expose Redis for debugging
 
+  postgres:
+    ports:
+      - "5432:5432"  # Expose Postgres for debugging
+
   logic:
+    ports:
+      - "9091:9091"  # Expose logic metrics for debugging
     environment:
       - LOG_LEVEL=debug
 

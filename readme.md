@@ -6,7 +6,7 @@
 
 This fork adds **production-ready multi-container deployment** to the original gochat project:
 
-- ✅ **8 Independent Containers**: Each service (etcd, redis, logic, connect-ws, connect-tcp, task, api, site) runs in its own container
+- ✅ **Independent Containers**: Each service (etcd, redis, postgres, rabbitmq, logic, connect-ws, connect-tcp, task, api, site) runs in its own container
 - ✅ **Horizontal Scaling**: Scale Logic, Connect, Task, and API services independently
 - ✅ **Docker Compose**: One-command deployment with `make compose-dev` or `make compose-prod`
 - ✅ **Auto-Configuration**: Container IPs automatically registered to etcd for proper RPC communication
@@ -43,7 +43,9 @@ make compose-prod HOST_IP=<your-server-ip>
 
 ```
 ├── etcd          → Service discovery
-├── redis         → Message queue & cache
+├── postgres      → User accounts (shared by all logic replicas)
+├── redis         → Sessions & cache
+├── rabbitmq      → Message queue
 ├── logic × N     → Business logic RPC (scalable)
 ├── connect-ws × N→ WebSocket handler (scalable)
 ├── connect-tcp × N→ TCP handler (scalable)
@@ -52,6 +54,23 @@ make compose-prod HOST_IP=<your-server-ip>
 └── site          → Frontend
 ```
 
+## Data & Security
+
+- **PostgreSQL for user data.** All logic replicas share one database, so
+  `--scale logic=N` is correct: a user registered against one replica can log in
+  against any other. Schema lives in `db/migrations/` and is applied by the
+  postgres container on first start (`make db-migrate` to reapply by hand).
+- **Passwords are bcrypt-hashed** (`pkg/password`). Plaintext never reaches the
+  database, and login spends the same time on a missing user as on a wrong
+  password so that accounts cannot be enumerated by response time.
+- **Credentials come from the environment.** `DB_PASSWORD` and friends override
+  the development defaults in `config/{env}/common.toml`; the production compose
+  overlay refuses to start without `POSTGRES_PASSWORD` set.
+
+> Note for load testing: bcrypt deliberately costs ~50-100ms per hash, which
+> dominates the register and login endpoints. Set `GOCHAT_BCRYPT_COST` lower when
+> you want those runs to measure the service rather than the KDF, and say so when
+> reporting the numbers.
 ## Load Testing Model
 
 This repo includes a k6-based load testing model under `loadtest/`. It uses a step-based ramp model with explicit phases:

@@ -15,6 +15,11 @@ services:
     ports:
       - "6379:6379"
 
+  # Expose postgres port for host access
+  postgres:
+    ports:
+      - "5432:5432"
+
   # Expose connect-tcp port for integration tests
   connect-tcp:
     ports:

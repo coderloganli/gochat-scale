@@ -1,3 +1,9 @@
 .idea
 vendor/
 loadtest/reports/
+
+# Build output
+bin/
+
+# Local database files (the database now runs as a service)
+*.sqlite3

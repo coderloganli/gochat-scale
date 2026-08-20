@@ -12,6 +12,21 @@ redisAddress = "redis:6379"
 redisPassword = ""
 db = 0
 
+[common-db]
+host = "postgres"
+port = 5432
+user = "gochat"
+# Development default only. Real deployments inject DB_PASSWORD from the
+# orchestrator secret store, which overrides this value.
+password = "gochat_secret"
+dbName = "gochat"
+sslMode = "disable"
+maxIdleConns = 10
+maxOpenConns = 100
+# Seconds. Bounds how long a pooled connection lives so that rolling database
+# restarts and DNS changes are picked up.
+connMaxLifetime = 3600
+
 [common-rabbitmq]
 url = "amqp://gochat:gochat_secret@rabbitmq:5672/gochat"
 prefetchCount = 10

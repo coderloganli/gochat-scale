@@ -27,11 +27,25 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  postgres:
+    restart: always
+    environment:
+      # No default: production refuses to start without an injected password.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - postgres-prod-data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   logic:
     restart: always
     environment:
       - RUN_MODE=prod
       - LOG_LEVEL=info
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     deploy:
       replicas: 3
       resources:
@@ -138,6 +152,8 @@ services:
         max-file: "3"
 
 volumes:
+  postgres-prod-data:
+    driver: local
   etcd-prod-data:
     driver: local
   redis-prod-data:

@@ -6,52 +6,115 @@
 package db
 
 import (
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
-	"github.com/sirupsen/logrus"
-	"gochat/config"
-	"path/filepath"
+	"fmt"
 	"sync"
 	"time"
+
+	"gochat/config"
+
+	"github.com/jinzhu/gorm"
+	// PostgreSQL dialect for GORM.
+	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
-var dbMap = map[string]*gorm.DB{}
-var syncLock sync.Mutex
+const (
+	// DefaultDbName is the logical name used by the application to look up its
+	// connection. It is not the PostgreSQL database name, which comes from config.
+	DefaultDbName = "gochat"
 
-func init() {
-	initDB("gochat")
-}
+	connectRetries = 10
+	retryInterval  = 2 * time.Second
+)
 
-func initDB(dbName string) {
-	var e error
-	// if prod env , you should change mysql driver for yourself !!!
-	realPath, _ := filepath.Abs("./")
-	configFilePath := realPath + "/db/gochat.sqlite3"
+var (
+	dbMap    = map[string]*gorm.DB{}
+	syncLock sync.Mutex
+)
+
+// Init opens the connection pool and verifies the database is reachable.
+// It is called explicitly by the services that need a database (logic), rather
+// than from an init function, so that packages importing this one for its types
+// do not open a connection as a side effect.
+func Init() error {
 	syncLock.Lock()
-	dbMap[dbName], e = gorm.Open("sqlite3", configFilePath)
-	dbMap[dbName].DB().SetMaxIdleConns(4)
-	dbMap[dbName].DB().SetMaxOpenConns(20)
-	dbMap[dbName].DB().SetConnMaxLifetime(8 * time.Second)
-	if config.GetMode() == "dev" {
-		dbMap[dbName].LogMode(true)
-	}
-	syncLock.Unlock()
-	if e != nil {
-		logrus.Errorf("connect db fail:%s", e.Error())
-	}
-}
-
-func GetDb(dbName string) (db *gorm.DB) {
-	if db, ok := dbMap[dbName]; ok {
-		return db
-	} else {
+	defer syncLock.Unlock()
+	if _, ok := dbMap[DefaultDbName]; ok {
 		return nil
 	}
+
+	cfg := config.Conf.Common.CommonDB
+	conn, err := connectWithRetry(cfg)
+	if err != nil {
+		return err
+	}
+
+	sqlDB := conn.DB()
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(cfg.ConnMaxLifetime) * time.Second)
+	conn.LogMode(config.GetMode() == "dev")
+
+	dbMap[DefaultDbName] = conn
+	logrus.Infof("connected to postgres %s:%d/%s", cfg.Host, cfg.Port, cfg.DbName)
+	return nil
+}
+
+// connectWithRetry waits for the database to accept connections. Under Docker
+// Compose or Kubernetes the database may still be starting when a service comes
+// up, and a healthcheck on the database alone does not guarantee it is ready by
+// the time the first query runs.
+func connectWithRetry(cfg config.CommonDB) (*gorm.DB, error) {
+	dsn := buildDSN(cfg)
+	var lastErr error
+	for attempt := 1; attempt <= connectRetries; attempt++ {
+		conn, err := gorm.Open("postgres", dsn)
+		if err == nil {
+			if err = conn.DB().Ping(); err == nil {
+				return conn, nil
+			}
+			_ = conn.Close()
+		}
+		lastErr = err
+		logrus.Warnf("connect db failed (attempt %d/%d): %v", attempt, connectRetries, err)
+		time.Sleep(retryInterval)
+	}
+	return nil, errors.Wrap(lastErr, "connect db")
+}
+
+func buildDSN(cfg config.CommonDB) string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DbName, cfg.SslMode,
+	)
+}
+
+// GetDb returns the connection pool for a logical database name, or nil if Init
+// has not run successfully.
+func GetDb(dbName string) *gorm.DB {
+	syncLock.Lock()
+	defer syncLock.Unlock()
+	return dbMap[dbName]
+}
+
+// Close releases the connection pool. Used on shutdown and by tests.
+func Close() error {
+	syncLock.Lock()
+	defer syncLock.Unlock()
+	var err error
+	for name, conn := range dbMap {
+		if cerr := conn.Close(); cerr != nil {
+			err = cerr
+		}
+		delete(dbMap, name)
+	}
+	return err
 }
 
 type DbGoChat struct {
 }
 
 func (*DbGoChat) GetDbName() string {
-	return "gochat"
+	return DefaultDbName
 }

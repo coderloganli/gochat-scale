@@ -1,10 +1,13 @@
 
 
-.PHONY: build help compose-dev compose-dev-build compose-dev-down compose-prod compose-prod-build compose-prod-down compose-scale compose-logs compose-ps clean test-infra test test-coverage test-unit test-integration fmt fmt-check vet lint build-binary build-image \
+.PHONY: build help compose-dev compose-dev-build compose-dev-down compose-prod compose-prod-build compose-prod-down compose-scale compose-logs compose-ps clean test-infra db-migrate db-shell test test-coverage test-unit test-integration fmt fmt-check vet lint build-binary build-image \
 	loadtest-help loadtest-setup loadtest-start loadtest-stop loadtest-full loadtest-capacity loadtest-login loadtest-register loadtest-logout loadtest-checkauth loadtest-websocket loadtest-push loadtest-pushroom loadtest-count loadtest-roominfo loadtest-smoke loadtest-custom loadtest-report loadtest-grafana loadtest-clean
 
 # Default HOST_IP for development
 HOST_IP ?= 127.0.0.1
+
+# Replica count for load-test scale-out runs: make loadtest-capacity LOGIC_REPLICAS=3
+LOGIC_REPLICAS ?= 1
 
 # Legacy build command (for backward compatibility)
 build: # make build TAG=1.23;make build TAG=latest,自定义版本号,构建自己机器可以运行的镜像(因为M1机器拉取提供的镜像架构不同,只能自己构建)
@@ -107,7 +110,16 @@ compose-ps:
 # Test infrastructure only (etcd + redis)
 test-infra:
 	@echo "Starting infrastructure services only..."
-	docker compose -f docker-compose.yml up etcd redis
+	docker compose -f docker-compose.yml up etcd redis postgres
+
+# Database
+db-migrate:
+	@echo "Applying migrations to the running postgres container..."
+	@for f in db/migrations/*.sql; do echo "  $$f"; docker exec -i gochat-postgres psql -U gochat -d gochat -v ON_ERROR_STOP=1 < $$f; done
+	@echo "Migrations applied."
+
+db-shell:
+	docker exec -it gochat-postgres psql -U gochat -d gochat
 
 # Clean up everything
 clean:
@@ -174,7 +186,7 @@ lint:
 # Build targets
 build-binary:
 	@echo "Building gochat binary..."
-	CGO_ENABLED=1 GOOS=linux go build -tags=etcd -ldflags="-w -s" -o bin/gochat main.go
+	CGO_ENABLED=0 GOOS=linux go build -tags=etcd -ldflags="-w -s" -o bin/gochat main.go
 	@echo "Binary built: bin/gochat"
 
 build-image:
@@ -288,14 +300,16 @@ loadtest-deps:
 loadtest-start: loadtest-deps
 	@echo "Starting GoChat services for load testing..."
 ifeq ($(NOBUILD),1)
-	$(LOADTEST_COMPOSE) up -d etcd redis rabbitmq jaeger prometheus grafana logic connect-ws connect-tcp task api
+	$(LOADTEST_COMPOSE) up -d --scale logic=$(LOGIC_REPLICAS) etcd redis rabbitmq postgres jaeger prometheus grafana logic connect-ws connect-tcp task api
 else
-	$(LOADTEST_COMPOSE) up -d --build etcd redis rabbitmq jaeger prometheus grafana logic connect-ws connect-tcp task api
+	$(LOADTEST_COMPOSE) up -d --build --scale logic=$(LOGIC_REPLICAS) etcd redis rabbitmq postgres jaeger prometheus grafana logic connect-ws connect-tcp task api
 endif
 	@echo "Waiting for Redis to be ready..."
 	@sleep 5
 	@echo "Flushing Redis data for clean test environment..."
 	@docker exec gochat-redis redis-cli FLUSHALL || true
+	@echo "Truncating users so repeated runs start from the same state..."
+	@docker exec gochat-postgres psql -U gochat -d gochat -c "TRUNCATE users RESTART IDENTITY" || true
 	@echo "Waiting for services to be healthy (55s)..."
 	@sleep 55
 	@echo "Services ready for load testing"
@@ -303,11 +317,13 @@ endif
 # Start services without rebuilding (quick start for load testing)
 loadtest-start-quick: loadtest-deps
 	@echo "Starting GoChat services for load testing (no rebuild)..."
-	$(LOADTEST_COMPOSE) up -d etcd redis rabbitmq jaeger prometheus grafana logic connect-ws connect-tcp task api
+	$(LOADTEST_COMPOSE) up -d --scale logic=$(LOGIC_REPLICAS) etcd redis rabbitmq postgres jaeger prometheus grafana logic connect-ws connect-tcp task api
 	@echo "Waiting for Redis to be ready..."
 	@sleep 5
 	@echo "Flushing Redis data for clean test environment..."
 	@docker exec gochat-redis redis-cli FLUSHALL || true
+	@echo "Truncating users so repeated runs start from the same state..."
+	@docker exec gochat-postgres psql -U gochat -d gochat -c "TRUNCATE users RESTART IDENTITY" || true
 	@echo "Waiting for services to be healthy (55s)..."
 	@sleep 55
 	@echo "Services ready for load testing"
