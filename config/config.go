@@ -180,6 +180,14 @@ type CommonRedis struct {
 	Db            int    `mapstructure:"db"`
 }
 
+type CommonRPC struct {
+	// Timeout bounds a single outbound RPC call, as a Go duration string.
+	// rpcx has no per-call timeout option, so this is applied as a context
+	// deadline; rpcx forwards it to the server as request metadata, which lets
+	// the callee stop working on a request whose caller has already given up.
+	Timeout string `mapstructure:"timeout"`
+}
+
 type CommonDB struct {
 	Host            string `mapstructure:"host"`
 	Port            int    `mapstructure:"port"`
@@ -207,6 +215,7 @@ type Common struct {
 	CommonEtcd     CommonEtcd     `mapstructure:"common-etcd"`
 	CommonRedis    CommonRedis    `mapstructure:"common-redis"`
 	CommonDB       CommonDB       `mapstructure:"common-db"`
+	CommonRPC      CommonRPC      `mapstructure:"common-rpc"`
 	CommonRabbitMQ CommonRabbitMQ `mapstructure:"common-rabbitmq"`
 	CommonTracing  CommonTracing  `mapstructure:"common-tracing"`
 }
@@ -290,8 +299,17 @@ type ApiBase struct {
 	ListenPort int `mapstructure:"listenPort"`
 }
 
+// ApiAdmission configures load shedding at the API edge. MaxInFlight has to be
+// calibrated with a load test; see docs/benchmarks.md.
+type ApiAdmission struct {
+	Enabled        bool   `mapstructure:"enabled"`
+	MaxInFlight    int    `mapstructure:"maxInFlight"`
+	AcquireTimeout string `mapstructure:"acquireTimeout"`
+}
+
 type ApiConfig struct {
-	ApiBase ApiBase `mapstructure:"api-base"`
+	ApiBase      ApiBase      `mapstructure:"api-base"`
+	ApiAdmission ApiAdmission `mapstructure:"api-admission"`
 }
 
 type SiteBase struct {

@@ -23,7 +23,7 @@ import { Rate, Trend, Counter } from 'k6/metrics';
 import { htmlReport } from './lib/vendor/k6-reporter.js';
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 import { buildCapacityStages, getCapacityConfig, parseDurationToSeconds, baseUrl, capacityThresholds, printConfig } from './lib/config.js';
-import { buildHttpStepThresholds, buildHttpStepReport } from './lib/step-report.js';
+import { buildHttpStepThresholds, buildHttpStepReport, recordHttpSteadyMetrics } from './lib/step-report.js';
 import { createTestUsers } from './lib/auth.js';
 
 // Custom metrics for capacity analysis
@@ -45,6 +45,16 @@ var steadyHttp5xx = new Counter('steady_http_5xx');
 var steadyHttp429 = new Counter('steady_http_429');
 var steadyHttpTimeout = new Counter('steady_http_timeout');
 var steadyIters = new Counter('steady_iters');
+
+var steadyMetrics = {
+  duration: steadyHttpDuration,
+  requests: steadyHttpRequests,
+  errors: steadyHttpErrors,
+  http4xx: steadyHttp4xx,
+  http5xx: steadyHttp5xx,
+  http429: steadyHttp429,
+  timeouts: steadyHttpTimeout,
+};
 
 // Build options dynamically
 var capacityConfig = getCapacityConfig();
@@ -128,42 +138,11 @@ function getStepInfo(elapsedSeconds) {
   return null;
 }
 
-function isTimeoutResponse(res) {
-  if (!res) {
-    return true;
-  }
-  var errorCode = res.error_code ? String(res.error_code).toLowerCase() : '';
-  var errorMsg = res.error ? String(res.error).toLowerCase() : '';
-  return errorCode.indexOf('timeout') !== -1 || errorMsg.indexOf('timeout') !== -1;
-}
-
+// Delegates to the shared recorder in lib/step-report.js. This file used to
+// carry its own copy, which silently diverged from it - the copy was still
+// counting a 429 as a service error long after the shared one stopped.
 function recordSteadyMetrics(res, duration, stepTags) {
-  if (!stepTags) {
-    return;
-  }
-
-  steadyHttpDuration.add(duration, stepTags);
-  steadyHttpRequests.add(1, stepTags);
-
-  var status = res && res.status ? res.status : 0;
-  var timeout = isTimeoutResponse(res);
-  var failed = timeout || status >= 400;
-
-  if (failed) {
-    steadyHttpErrors.add(1, stepTags);
-  }
-  if (timeout) {
-    steadyHttpTimeout.add(1, stepTags);
-  }
-  if (status === 429) {
-    steadyHttp429.add(1, stepTags);
-  }
-  if (status >= 400 && status < 500) {
-    steadyHttp4xx.add(1, stepTags);
-  }
-  if (status >= 500) {
-    steadyHttp5xx.add(1, stepTags);
-  }
+  recordHttpSteadyMetrics(res, duration, stepTags, steadyMetrics);
 }
 
 // Setup: Create test users

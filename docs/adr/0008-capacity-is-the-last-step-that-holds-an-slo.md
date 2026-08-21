@@ -30,10 +30,22 @@ Only steady-state samples are tagged with `{step, vus}` and rolled up
 (`loadtest/scripts/lib/step-report.js`), so connection setup and cold caches do
 not contaminate the numbers.
 
-A step passes if **all** of: p95 ≤ 500 ms, error rate ≤ 1%, timeout rate = 0.
-**Capacity** is the last passing step; **bottleneck** is the first failing step,
-reported with the reasons it failed. Thresholds are overridable per run
-(`SLO_P95_MS` and friends).
+A step passes if **all** of: p95 ≤ 500 ms, error rate ≤ 1%, timeout rate = 0,
+shed rate ≤ 1%. **Capacity** is the last passing step; **bottleneck** is the
+first failing step, reported with the reasons it failed. Thresholds are
+overridable per run (`SLO_P95_MS` and friends).
+
+**A shed request is not an error.** Since
+[0009](./0009-the-api-sheds-load-instead-of-queueing-it.md) the API refuses work
+it cannot start, with HTTP 429. That is the service behaving correctly, and
+counting it as a failure would make a system that degrades gracefully look worse
+than one that collapses — precisely backwards. So 429 is excluded from the error
+rate and tracked as its own **shed rate**.
+
+It still fails the step, on its own threshold. A step where the service is
+turning work away is past its capacity by definition; what changes is that the
+report says *why* a step failed — refused, too slow, or broken — instead of
+flattening the three into one number.
 
 ## Why
 

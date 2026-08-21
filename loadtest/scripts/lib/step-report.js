@@ -134,7 +134,11 @@ export function recordHttpSteadyMetrics(res, duration, steadyTags, metrics) {
 
   var status = res && res.status ? res.status : 0;
   var timeout = isTimeoutResponse(res);
-  var failed = timeout || status >= 400;
+  // A 429 is the service refusing work on purpose, not failing to do it. It is
+  // counted separately so that shedding does not read as an outage; see
+  // docs/adr/0009 for why capacity is judged against both.
+  var shed = status === 429;
+  var failed = timeout || (status >= 400 && !shed);
 
   if (failed) {
     metrics.errors.add(1, steadyTags);
@@ -357,6 +361,7 @@ function renderStepHtml(rows, capacity, bottleneck, slo, title) {
   }
   html.push(', error rate ≤ ' + (slo.sloErrorRate * 100).toFixed(2) + '%');
   html.push(', timeout rate ≤ ' + (slo.sloTimeoutRate * 100).toFixed(2) + '%');
+  html.push(', shed rate ≤ ' + (slo.sloShedRate * 100).toFixed(2) + '%');
   html.push('</div></div>');
 
   // Summary cards
@@ -415,6 +420,7 @@ function renderStepHtml(rows, capacity, bottleneck, slo, title) {
   html.push('<th>Iter/s</th>');
   html.push('<th>Error Rate</th>');
   html.push('<th>Timeout Rate</th>');
+  html.push('<th>Shed Rate</th>');
   html.push('<th>p90</th>');
   html.push('<th>p95</th>');
   html.push('<th>p99</th>');
@@ -435,6 +441,7 @@ function renderStepHtml(rows, capacity, bottleneck, slo, title) {
     html.push('<td>' + formatNumber(row.itersPerSec, 2) + '</td>');
     html.push('<td>' + formatRate(row.errorRate) + '</td>');
     html.push('<td>' + formatRate(row.timeoutRate) + '</td>');
+    html.push('<td>' + formatRate(row.shedRate) + '</td>');
     html.push('<td>' + formatNumber(row.p90, 2) + '</td>');
     html.push('<td>' + formatNumber(row.p95, 2) + '</td>');
     html.push('<td>' + formatNumber(row.p99, 2) + '</td>');
@@ -587,6 +594,9 @@ export function buildHttpStepReport(data, stepPlan, options) {
   var sloP99 = __ENV.SLO_P99_MS ? parseFloat(__ENV.SLO_P99_MS) : null;
   var sloErrorRate = __ENV.SLO_ERROR_RATE ? parseFloat(__ENV.SLO_ERROR_RATE) : 0.01;
   var sloTimeoutRate = __ENV.SLO_TIMEOUT_RATE ? parseFloat(__ENV.SLO_TIMEOUT_RATE) : 0;
+  // Shedding is correct behaviour under overload, but a step where the service
+  // is refusing work is past its capacity by definition, so it still fails.
+  var sloShedRate = __ENV.SLO_SHED_RATE ? parseFloat(__ENV.SLO_SHED_RATE) : 0.01;
 
   var rows = [];
   var lastPassing = null;
@@ -608,6 +618,7 @@ export function buildHttpStepReport(data, stepPlan, options) {
     var itersPerSec = stepSeconds > 0 ? iters / stepSeconds : 0;
     var errorRate = requests > 0 ? errors / requests : 0;
     var timeoutRate = requests > 0 ? timeouts / requests : 0;
+    var shedRate = requests > 0 ? count429 / requests : 0;
     var p95 = latency['p(95)'];
     var p99 = latency['p(99)'];
 
@@ -625,6 +636,9 @@ export function buildHttpStepReport(data, stepPlan, options) {
       sloPass = false;
     }
     if (timeoutRate > sloTimeoutRate) {
+      sloPass = false;
+    }
+    if (shedRate > sloShedRate) {
       sloPass = false;
     }
 
@@ -654,6 +668,9 @@ export function buildHttpStepReport(data, stepPlan, options) {
     if (timeoutRate > sloTimeoutRate) {
       failReasons.push('timeout rate exceeded (' + formatRate(timeoutRate) + ' > ' + formatRate(sloTimeoutRate) + ')');
     }
+    if (shedRate > sloShedRate) {
+      failReasons.push('shed rate exceeded (' + formatRate(shedRate) + ' > ' + formatRate(sloShedRate) + ') - service refusing work');
+    }
 
     rows.push({
       step: step.step,
@@ -662,6 +679,7 @@ export function buildHttpStepReport(data, stepPlan, options) {
       itersPerSec: itersPerSec,
       errorRate: errorRate,
       timeoutRate: timeoutRate,
+      shedRate: shedRate,
       p90: latency['p(90)'],
       p95: p95,
       p99: p99,
@@ -696,6 +714,7 @@ export function buildHttpStepReport(data, stepPlan, options) {
       sloP99: sloP99,
       sloErrorRate: sloErrorRate,
       sloTimeoutRate: sloTimeoutRate,
+      sloShedRate: sloShedRate,
     }, title),
     json: {
       slo: {
@@ -703,6 +722,7 @@ export function buildHttpStepReport(data, stepPlan, options) {
         p99_ms: sloP99,
         error_rate: sloErrorRate,
         timeout_rate: sloTimeoutRate,
+        shed_rate: sloShedRate,
       },
       capacity: lastPassing,
       bottleneck: bottleneck,

@@ -1,3 +1,14 @@
 [api-base]
 listenPort = 7070
 
+[api-admission]
+# Refuse work the service cannot start rather than queueing it. Past
+# saturation the queue only grows until clients time out, and the service
+# never drains it - see docs/benchmarks.md.
+enabled = true
+# Calibrate against a load test. Too high and nothing is ever shed; too low
+# and capacity is left unused.
+maxInFlight = 512
+# How long a request waits for a slot before being shed. This is the
+# overload signal: it is only reached when slots stop freeing up.
+acquireTimeout = "50ms"

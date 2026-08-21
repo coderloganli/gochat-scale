@@ -31,6 +31,27 @@ var (
 		},
 		[]string{"service"},
 	)
+
+	// AdmissionInFlight counts requests holding an admission slot. Compared
+	// against the configured limit, it says how close the service is to shedding.
+	AdmissionInFlight = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "gochat_admission_in_flight",
+			Help: "Requests currently holding an admission control slot",
+		},
+		[]string{"service"},
+	)
+
+	// AdmissionShedTotal counts requests refused without being processed. This
+	// is deliberate load shedding, not a failure of the service, and is tracked
+	// separately from errors for that reason.
+	AdmissionShedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "gochat_admission_shed_total",
+			Help: "Requests shed by admission control",
+		},
+		[]string{"service"},
+	)
 )
 
 // RPC Server Metrics (shared by Logic and Connect)

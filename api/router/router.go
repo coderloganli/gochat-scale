@@ -7,11 +7,15 @@ package router
 
 import (
 	"net/http"
+	"os"
+	"strconv"
+	"time"
 
 	"gochat/api/cache"
 	"gochat/api/ctxutil"
 	"gochat/api/handler"
 	"gochat/api/rpc"
+	"gochat/config"
 	"gochat/pkg/middleware"
 	"gochat/proto"
 	"gochat/tools"
@@ -19,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/sirupsen/logrus"
 )
 
 func Register() *gin.Engine {
@@ -26,6 +31,11 @@ func Register() *gin.Engine {
 	r.Use(CorsMiddleware())
 	r.Use(middleware.TracingMiddleware("api"))
 	r.Use(middleware.PrometheusMiddleware("api"))
+	// After the metrics middleware so that shed requests are still counted, and
+	// before everything else so that a shed costs nothing but the refusal.
+	if admission, ok := admissionMiddleware(); ok {
+		r.Use(admission)
+	}
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	initUserRouter(r)
 	initPushRouter(r)
@@ -33,6 +43,43 @@ func Register() *gin.Engine {
 		tools.FailWithMsg(c, "please check request url !")
 	})
 	return r
+}
+
+// admissionMiddleware builds the load shedder from config, or reports that it is
+// switched off. It is disabled by config rather than removed so that a run with
+// and without it can be compared on the same build.
+func admissionMiddleware() (gin.HandlerFunc, bool) {
+	cfg := config.Conf.Api.ApiAdmission
+	// Environment overrides exist so that one deployed build can be measured with
+	// admission control on and off, without a rebuild between the two runs.
+	if v := os.Getenv("ADMISSION_ENABLED"); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			cfg.Enabled = parsed
+		} else {
+			logrus.Warnf("invalid ADMISSION_ENABLED %q, using config", v)
+		}
+	}
+	if v := os.Getenv("ADMISSION_MAX_IN_FLIGHT"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			cfg.MaxInFlight = parsed
+		} else {
+			logrus.Warnf("invalid ADMISSION_MAX_IN_FLIGHT %q, using config", v)
+		}
+	}
+	if !cfg.Enabled {
+		logrus.Warn("admission control disabled: the service will queue without bound under overload")
+		return nil, false
+	}
+	opts := middleware.AdmissionOptions{MaxInFlight: cfg.MaxInFlight}
+	if cfg.AcquireTimeout != "" {
+		parsed, err := time.ParseDuration(cfg.AcquireTimeout)
+		if err != nil || parsed <= 0 {
+			logrus.Warnf("invalid acquireTimeout %q, using default", cfg.AcquireTimeout)
+		} else {
+			opts.AcquireTimeout = parsed
+		}
+	}
+	return middleware.Admission("api", opts), true
 }
 
 func initUserRouter(r *gin.Engine) {

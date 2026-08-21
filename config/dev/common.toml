@@ -12,6 +12,11 @@ redisAddress = "redis:6379"
 redisPassword = ""
 db = 0
 
+[common-rpc]
+# Bounds one outbound RPC call. Healthy p99 is under 500ms (docs/benchmarks.md),
+# so this leaves ample headroom while staying far below any client timeout.
+timeout = "2s"
+
 [common-db]
 host = "postgres"
 port = 5432
