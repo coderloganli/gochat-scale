@@ -87,7 +87,14 @@ func CheckSessionId() gin.HandlerFunc {
 			AuthToken: authToken,
 		}
 		code, userId, userName := rpc.RpcLogicObj.CheckAuth(c.Request.Context(), req)
-		if code == tools.CodeFail || userId <= 0 || userName == "" {
+		if code == tools.CodeUnavailable {
+			// The session may well be valid; logic could not be reached to say so.
+			// Reporting that as a session error would log the user out on a blip.
+			c.Abort()
+			tools.ResponseWithCode(c, tools.CodeUnavailable, nil, nil)
+			return
+		}
+		if code != tools.CodeSuccess || userId <= 0 || userName == "" {
 			c.Abort()
 			tools.ResponseWithCode(c, tools.CodeSessionError, nil, nil)
 			return

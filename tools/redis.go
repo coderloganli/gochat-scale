@@ -39,15 +39,15 @@ func GetRedisInstance(redisOpt RedisOption) *redis.Client {
 		Addr:         addr,
 		Password:     password,
 		DB:           db,
-		DialTimeout:  2 * time.Second,  // Connection timeout
-		ReadTimeout:  1 * time.Second,  // Read timeout
-		WriteTimeout: 1 * time.Second,  // Write timeout
-		PoolSize:     200,              // Increased pool size for high concurrency
-		MinIdleConns: 20,               // More idle connections ready
-		MaxRetries:   1,                // Reduce retries for fast failure
-		MaxConnAge:   0,                // No max age, keep connections alive
-		PoolTimeout:  3 * time.Second,  // Wait for connection from pool
-		IdleTimeout:  5 * time.Minute,  // Keep idle connections longer
+		DialTimeout:  2 * time.Second, // Connection timeout
+		ReadTimeout:  1 * time.Second, // Read timeout
+		WriteTimeout: 1 * time.Second, // Write timeout
+		PoolSize:     200,             // Increased pool size for high concurrency
+		MinIdleConns: 20,              // More idle connections ready
+		MaxRetries:   1,               // Reduce retries for fast failure
+		MaxConnAge:   0,               // No max age, keep connections alive
+		PoolTimeout:  3 * time.Second, // Wait for connection from pool
+		IdleTimeout:  5 * time.Minute, // Keep idle connections longer
 	})
 	RedisClientMap[addr] = client
 	syncLock.Unlock()

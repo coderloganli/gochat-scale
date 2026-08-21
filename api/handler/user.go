@@ -34,10 +34,10 @@ func Login(c *gin.Context) {
 	}
 	code, authToken, msg := rpc.RpcLogicObj.Login(c.Request.Context(), req)
 	status := "success"
-	if code == tools.CodeFail || authToken == "" {
+	if code != tools.CodeSuccess || authToken == "" {
 		status = "failure"
 		metrics.UserOperationsTotal.WithLabelValues("login", status).Inc()
-		tools.FailWithMsg(c, msg)
+		tools.FailFromCode(c, code, msg)
 		return
 	}
 	metrics.UserOperationsTotal.WithLabelValues("login", status).Inc()
@@ -61,10 +61,10 @@ func Register(c *gin.Context) {
 	}
 	code, authToken, msg := rpc.RpcLogicObj.Register(c.Request.Context(), req)
 	status := "success"
-	if code == tools.CodeFail || authToken == "" {
+	if code != tools.CodeSuccess || authToken == "" {
 		status = "failure"
 		metrics.UserOperationsTotal.WithLabelValues("register", status).Inc()
-		tools.FailWithMsg(c, msg)
+		tools.FailFromCode(c, code, msg)
 		return
 	}
 	metrics.UserOperationsTotal.WithLabelValues("register", status).Inc()
@@ -108,8 +108,8 @@ func Logout(c *gin.Context) {
 		AuthToken: authToken,
 	}
 	code := rpc.RpcLogicObj.Logout(c.Request.Context(), logoutReq)
-	if code == tools.CodeFail {
-		tools.FailWithMsg(c, "logout fail!")
+	if code != tools.CodeSuccess {
+		tools.FailFromCode(c, code, "logout fail!")
 		return
 	}
 	tools.SuccessWithMsg(c, "logout ok!", nil)

@@ -37,8 +37,8 @@ func Push(c *gin.Context) {
 	toUserIdInt, _ := strconv.Atoi(toUserId)
 	getUserNameReq := &proto.GetUserInfoRequest{UserId: toUserIdInt}
 	code, toUserName := rpc.RpcLogicObj.GetUserNameByUserId(ctx, getUserNameReq)
-	if code == tools.CodeFail {
-		tools.FailWithMsg(c, "rpc fail get friend userName")
+	if code != tools.CodeSuccess {
+		tools.FailFromCode(c, code, "rpc fail get friend userName")
 		return
 	}
 	// Reuse auth info from middleware instead of making another RPC call
@@ -58,8 +58,8 @@ func Push(c *gin.Context) {
 		Op:           config.OpSingleSend,
 	}
 	code, rpcMsg := rpc.RpcLogicObj.Push(ctx, req)
-	if code == tools.CodeFail {
-		tools.FailWithMsg(c, rpcMsg)
+	if code != tools.CodeSuccess {
+		tools.FailFromCode(c, code, rpcMsg)
 		return
 	}
 	tools.SuccessWithMsg(c, "ok", nil)
@@ -95,8 +95,8 @@ func PushRoom(c *gin.Context) {
 		Op:           config.OpRoomSend,
 	}
 	code, msg := rpc.RpcLogicObj.PushRoom(ctx, req)
-	if code == tools.CodeFail {
-		tools.FailWithMsg(c, "rpc push room msg fail!")
+	if code != tools.CodeSuccess {
+		tools.FailFromCode(c, code, "rpc push room msg fail!")
 		return
 	}
 	tools.SuccessWithMsg(c, "ok", msg)
@@ -120,8 +120,8 @@ func Count(c *gin.Context) {
 		Op:     config.OpRoomCountSend,
 	}
 	code, msg := rpc.RpcLogicObj.Count(ctx, req)
-	if code == tools.CodeFail {
-		tools.FailWithMsg(c, "rpc get room count fail!")
+	if code != tools.CodeSuccess {
+		tools.FailFromCode(c, code, "rpc get room count fail!")
 		return
 	}
 	tools.SuccessWithMsg(c, "ok", msg)
@@ -145,8 +145,8 @@ func GetRoomInfo(c *gin.Context) {
 		Op:     config.OpRoomInfoSend,
 	}
 	code, msg := rpc.RpcLogicObj.GetRoomInfo(ctx, req)
-	if code == tools.CodeFail {
-		tools.FailWithMsg(c, "rpc get room info fail!")
+	if code != tools.CodeSuccess {
+		tools.FailFromCode(c, code, "rpc get room info fail!")
 		return
 	}
 	tools.SuccessWithMsg(c, "ok", msg)
