@@ -48,6 +48,10 @@ services:
     environment:
       - RUN_MODE=dev
       - LOG_LEVEL=warn
+      # Load tests measure the service, not the KDF. bcrypt at its default
+      # cost would dominate the login endpoint and hide everything else.
+      # Never lower this outside a load test.
+      - GOCHAT_BCRYPT_COST=4
     deploy:
       resources:
         limits:

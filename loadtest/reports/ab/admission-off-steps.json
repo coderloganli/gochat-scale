@@ -1,0 +1,179 @@
+{
+  "slo": {
+    "p95_ms": 500,
+    "p99_ms": null,
+    "error_rate": 0.01,
+    "timeout_rate": 0,
+    "shed_rate": 0.01
+  },
+  "capacity": {
+    "step": 4,
+    "vus": 400,
+    "rps": 3087,
+    "itersPerSec": 308.7
+  },
+  "bottleneck": {
+    "step": 5,
+    "vus": 500,
+    "rps": 3118.3333333333335,
+    "reasons": [
+      "p95 latency exceeded (654ms > 500ms)"
+    ]
+  },
+  "rows": [
+    {
+      "step": 1,
+      "vus": 100,
+      "rps": 1931,
+      "itersPerSec": 193.1,
+      "errorRate": 0,
+      "timeoutRate": 0,
+      "shedRate": 0,
+      "p90": 2,
+      "p95": 3,
+      "p99": 21,
+      "http4xx": 0,
+      "http5xx": 0,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": true,
+      "failReasons": []
+    },
+    {
+      "step": 2,
+      "vus": 200,
+      "rps": 2132.3333333333335,
+      "itersPerSec": 213.23333333333332,
+      "errorRate": 0.0003908081913396905,
+      "timeoutRate": 0,
+      "shedRate": 0,
+      "p90": 6,
+      "p95": 89,
+      "p99": 1350,
+      "http4xx": 0,
+      "http5xx": 25,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": true,
+      "failReasons": []
+    },
+    {
+      "step": 3,
+      "vus": 300,
+      "rps": 2981,
+      "itersPerSec": 298.1,
+      "errorRate": 0.000011181930001118193,
+      "timeoutRate": 0,
+      "shedRate": 0,
+      "p90": 105,
+      "p95": 283,
+      "p99": 963,
+      "http4xx": 0,
+      "http5xx": 1,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": true,
+      "failReasons": []
+    },
+    {
+      "step": 4,
+      "vus": 400,
+      "rps": 3087,
+      "itersPerSec": 308.7,
+      "errorRate": 0,
+      "timeoutRate": 0,
+      "shedRate": 0,
+      "p90": 198,
+      "p95": 458,
+      "p99": 1057,
+      "http4xx": 0,
+      "http5xx": 0,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": true,
+      "failReasons": []
+    },
+    {
+      "step": 5,
+      "vus": 500,
+      "rps": 3118.3333333333335,
+      "itersPerSec": 311.8333333333333,
+      "errorRate": 0.00006413682522715126,
+      "timeoutRate": 0,
+      "shedRate": 0,
+      "p90": 289,
+      "p95": 654,
+      "p99": 1418,
+      "http4xx": 0,
+      "http5xx": 6,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": false,
+      "failReasons": [
+        "p95 latency exceeded (654ms > 500ms)"
+      ]
+    },
+    {
+      "step": 6,
+      "vus": 600,
+      "rps": 3144,
+      "itersPerSec": 314.4,
+      "errorRate": 0.002321882951653944,
+      "timeoutRate": 0,
+      "shedRate": 0,
+      "p90": 319,
+      "p95": 801.0500000000029,
+      "p99": 1697,
+      "http4xx": 0,
+      "http5xx": 219,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": false,
+      "failReasons": [
+        "p95 latency exceeded (801ms > 500ms)"
+      ]
+    },
+    {
+      "step": 7,
+      "vus": 700,
+      "rps": 3191,
+      "itersPerSec": 319.1,
+      "errorRate": 0.010968348480100282,
+      "timeoutRate": 0,
+      "shedRate": 0,
+      "p90": 388,
+      "p95": 1013,
+      "p99": 2000,
+      "http4xx": 0,
+      "http5xx": 1050,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": false,
+      "failReasons": [
+        "p95 latency exceeded (1013ms > 500ms)",
+        "error rate exceeded (1.10% > 1.00%)"
+      ]
+    },
+    {
+      "step": 8,
+      "vus": 800,
+      "rps": 3381.6666666666665,
+      "itersPerSec": 338.1666666666667,
+      "errorRate": 0.017102020699852144,
+      "timeoutRate": 0,
+      "shedRate": 0,
+      "p90": 484,
+      "p95": 1162.5499999999884,
+      "p99": 2001,
+      "http4xx": 0,
+      "http5xx": 1735,
+      "http429": 0,
+      "timeouts": 0,
+      "sloPass": false,
+      "failReasons": [
+        "p95 latency exceeded (1163ms > 500ms)",
+        "error rate exceeded (1.71% > 1.00%)"
+      ]
+    }
+  ]
+}

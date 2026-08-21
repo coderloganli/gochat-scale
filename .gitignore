@@ -4,9 +4,14 @@ loadtest/reports/*
 # Keep the small evidence files behind docs/benchmarks.md; the bulky
 # generated HTML and raw k6 JSON stay ignored.
 !loadtest/reports/*-steps.json
+!loadtest/reports/ab/
+!loadtest/reports/ab/*-steps.json
 
 # Build output
 bin/
 
 # Local database files (the database now runs as a service)
 *.sqlite3
+
+# Fetched by `make loadtest-deps`, not source
+loadtest/scripts/lib/vendor/

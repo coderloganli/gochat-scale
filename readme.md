@@ -20,6 +20,20 @@ tables, the analysis and the known gaps are in
 > Measured on `78bce1c`, before the PostgreSQL and bcrypt changes. See the doc
 > for what that invalidates.
 
+### Under overload
+
+The API bounds in-flight requests and refuses the excess with 429 rather than
+queueing it. Measured A/B on one build, differing only in configuration:
+
+| At 2,800 VUs | Without shedding | With shedding |
+|---|---|---|
+| p95 | 3,061 ms | **806 ms** |
+| Useful throughput | 3,561 req/s | 2,666 req/s |
+| Requests refused | 0% | 63.7% |
+
+Capacity is 400 VUs either way — shedding bounds latency past the ceiling, it
+does not raise it, and it costs 25% of the useful work at the top of the range.
+
 ## What's New
 
 This fork adds **production-ready multi-container deployment** to the original gochat project:

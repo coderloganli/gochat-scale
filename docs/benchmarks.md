@@ -7,8 +7,13 @@ git so the figures can be checked rather than taken on trust:
 
 | Claim | Evidence |
 |---|---|
-| Capacity baseline | `loadtest/reports/capacity-baseline-steps.json` |
-| Full-system mix | `loadtest/reports/full-system-steps.json` |
+| Capacity baseline (2026-01, `78bce1c`) | `loadtest/reports/capacity-baseline-steps.json` |
+| Full-system mix (2026-01, `78bce1c`) | `loadtest/reports/full-system-steps.json` |
+| Overload behaviour A/B (2026-08) | `loadtest/reports/ab/*-steps.json` |
+
+Two sets of runs, on different machines and different builds. They are reported
+separately and are **not** comparable to each other; each is internally
+consistent. [Overload behaviour](#overload-behaviour-2026-08) is the newer one.
 
 ## Headline
 
@@ -22,6 +27,14 @@ git so the figures can be checked rather than taken on trust:
 - **The collapse is the interesting result.** Past the knee the service queues
   without bound instead of shedding load: a tenth of requests hit the client's
   60 s timeout, and it never recovers for the remaining eight steps of the run.
+- **Admission control bounds latency past capacity, and costs throughput to do
+  it.** In a later A/B on different hardware, p95 at 2,800 VUs is 806 ms with
+  shedding against 3,061 ms without, while useful throughput drops 25% and two
+  thirds of requests are refused. Capacity itself is unchanged.
+- **The measurement found a bug the service had been hiding.** Redis
+  transactions were opened with a raw `MULTI` on a pooled client, corrupting
+  sessions under concurrency; a fifth of logins were failing and being reported
+  as successes. See [Overload behaviour](#overload-behaviour-2026-08).
 
 ## What was measured, and on what
 
@@ -69,15 +82,17 @@ passes, **bottleneck** is the first step that fails. Both are resolution-limited
 by the step size — a capacity of 2,000 VUs on a ladder that jumps by 1,000 means
 "somewhere in [2000, 3000)", not 2,000 exactly.
 
-**What the error rate actually counts.** A request counts as failed if it times
-out or returns a status of 400 or above. The API returns HTTP 200 for every
-response, including its own failures, which it signals through a `code` field in
-the body (`tools/response.go`). So in these runs the error rate is a timeout rate
-under another name, and a request that failed quickly with `code: 1` was counted
-as a success. Nothing in the results below appears to be affected — the failing
-steps failed by timing out — but the measurement cannot currently distinguish
-"served correctly" from "refused instantly", and that distinction is the whole
-point of load shedding.
+**What the error rate counts.** A request counts as failed if it times out or
+returns a status of 400 or above, except 429 — a refusal is the service working
+as intended, and is tracked as its own shed rate instead
+([ADR 0008](./adr/0008-capacity-is-the-last-step-that-holds-an-slo.md)).
+
+**In the January runs this counted almost nothing.** The API answered every
+request with HTTP 200 at the time, signalling the real outcome in a `code` field
+in the body, so no HTTP client could tell a failure from a success and the error
+rate was a timeout rate under another name. Failure codes carry a matching HTTP
+status as of the 2026-08 work, which is what makes the shed rate measurable at
+all.
 
 ## Run 1 — Capacity baseline
 
@@ -122,16 +137,17 @@ every request that finally reached a handler had already been abandoned by its
 client, so the work was spent producing results nobody was waiting for — which is
 why increasing load in the same gradual increments never let it recover.
 
-There is no admission control anywhere in the request path: no bounded queue with
-a fast rejection path, no connection cap, and no deadline on the RPC to logic, so
-an api goroutine waits indefinitely on a slow call. Adding admission control
-would not raise the ceiling, but it would turn a hard outage into graceful
-degradation — the 600 VU step would shed the excess and keep serving the rest.
+At the time of this run there was no admission control anywhere in the request
+path: no bounded queue with a fast rejection path, no connection cap, and no
+deadline on the RPC to logic, so an api goroutine waited indefinitely on a slow
+call. Both of the missing bounds were added later; what that changed, and what
+it did not, is measured in [Overload behaviour](#overload-behaviour-2026-08).
 
 > **A caveat on this run's counters, and a correction.** The table shows 0 4xx,
 > 0 5xx and 0 429, and an earlier version of this document offered that as
-> evidence that nothing was ever rejected. It is not evidence. `tools/response.go`
-> answers **every** request with HTTP 200 and puts the real status in a `code`
+> evidence that nothing was ever rejected. It is not evidence. At the time of this
+> run `tools/response.go` answered **every** request with HTTP 200, putting the
+> real status in a `code`
 > field in the JSON body, so those three counters were zero by construction and
 > would have been zero no matter how the service behaved. The claim above rests
 > on the timeouts and the failure to recover, which are real, and on the absence
@@ -183,6 +199,129 @@ cap the load-test profile puts on each app service.
 That is a hypothesis this data cannot settle. Confirming it means re-running with
 the cap raised and checking whether the ceiling moves with it.
 
+## Overload behaviour (2026-08)
+
+A second set of runs, measuring what the service does past its capacity and what
+two changes did about it: a deadline on every outbound RPC, and admission control
+that refuses work rather than queueing it ([ADR
+0009](./adr/0009-the-api-sheds-load-instead-of-queueing-it.md)).
+
+Unlike the January runs, the environment is recorded — that was the first item on
+the gap list, and quoting a figure that cannot be reproduced from the artifact
+was the reason it was there.
+
+| | |
+|---|---|
+| Host | AMD Ryzen 7 7800X3D, 8 cores, 31 GB RAM, Windows 11 |
+| Docker | 29.1.3, Linux engine, 8 CPUs and 15.6 GB allocated |
+| Build | working tree at the commit that introduced admission control |
+| Profile | `loadtest/docker-compose.loadtest.yml`, 0.5 CPU per app service |
+| Replicas | 1 of each |
+| Driver | k6 0.49.0, in-network, `capacity-baseline.js` |
+| Ladder | 15 s ramp, 15 s warm-up, 30 s steady per step |
+| bcrypt cost | 4 (`GOCHAT_BCRYPT_COST`), so the KDF does not dominate `login` |
+| Admission | `maxInFlight` 512, `acquireTimeout` 50 ms |
+
+**These runs are on faster hardware than the January ones.** Nothing here should
+be compared against the numbers above; the comparisons that matter are between
+the arms below, which differ only in configuration.
+
+### The three arms
+
+| Arm | RPC deadline | Admission control | Evidence |
+|---|---|---|---|
+| A | none (120 s) | off | `ab/stress-no-deadline-steps.json` |
+| B | 2 s | on | `ab/stress-admission-on-steps.json` |
+| — | 2 s | off | `ab/admission-off-steps.json`, `ab/no-deadline-steps.json` (100–800 VU ladder) |
+
+### Result: latency stops growing, at a price
+
+| VUs | A: served req/s | A: p95 | B: served req/s | B: p95 | B: shed |
+|----:|----------------:|-------:|----------------:|-------:|--------:|
+| 400 | 2,862 | 486 ms | 3,088 | 459 ms | 0% |
+| 800 | 3,306 | 1,262 ms | 3,125 | 629 ms | 26.0% |
+| 1,200 | 3,004 | 1,936 ms | 3,128 | 501 ms | 48.9% |
+| 1,600 | 3,391 | 2,094 ms | 2,438 | 524 ms | 65.5% |
+| 2,000 | 3,698 | 2,660 ms | 2,520 | 584 ms | 65.9% |
+| 2,400 | 3,424 | 3,314 ms | 2,569 | 725 ms | 62.9% |
+| 2,800 | 3,561 | 3,061 ms | 2,666 | 806 ms | 63.7% |
+
+"Served" excludes shed requests; B's raw request rate reaches 7,395/s, most of
+which is the cost of saying no.
+
+**Capacity is 400 VUs in both arms, and in every other arm run.** That is the
+result to state first, because it is the one most likely to be misreported.
+Shedding does not raise the ceiling and was never going to: past saturation the
+service was already finishing less work than it was offered.
+
+**What changes is everything above the ceiling.** Without shedding, p95 climbs to
+3.3 s and keeps climbing; with it, p95 stays between 459 ms and 806 ms across a
+7× range of offered load. At 2,800 VUs that is 806 ms against 3,061 ms — **3.8×
+lower**.
+
+**The price is real and is not hidden.** Served throughput at 2,800 VUs falls
+from 3,561 to 2,666 req/s, **25% less useful work**, and by then two thirds of
+requests are being refused. `maxInFlight` of 512 is conservative: served
+throughput dips to 2,438 req/s at 1,600 VUs and recovers above it, which is the
+signature of a limit set below what the service could actually sustain. A larger
+value would give back some of that throughput at the cost of some latency. The
+number is a dial between the two, and 512 has not been tuned — it is the first
+value tried.
+
+**Upstream failures drop.** In the 100–800 VU ladder run with a 2 s deadline and
+no shedding, 503s from the deadline reached 1,050 and 1,735 in the top two steps;
+with shedding they fell to 69 and 186. Refusing at the edge keeps logic inside
+the envelope where it answers in time.
+
+### What could not be reproduced
+
+The January baseline collapsed at 600 VUs and never recovered. **On this hardware
+that does not happen** — arm A was pushed to 2,800 VUs, with no deadline and no
+shedding, and degraded smoothly the whole way: latency grew to about 3 s,
+throughput held near 3,400 req/s, and there were zero timeouts and zero errors.
+
+So the claim that admission control prevents collapse is **not tested here**. What
+is tested is the behaviour past capacity, and there the difference is clear. The
+collapse would need the slower machine, a much longer ladder, or both to
+reproduce, and that run has not been done.
+
+There is also a strong candidate for why the old run collapsed and this one does
+not, unrelated to hardware — see below.
+
+### A bug the measurement found
+
+The first run of this A/B returned **10.6% HTTP 503 from the very first step**,
+at 100 VUs, with a p99 of 278 ms — far too fast to be timeouts. The cause was not
+load at all:
+
+```
+136,483  GetRoomInfo failed: getRoomInfo no this user
+ 23,097  Login failed: ERR EXEC without MULTI
+ 15,471  PushRoom failed: redis: can't parse array reply: "+QUEUED"
+```
+
+`logic` opened Redis transactions with `Do("MULTI")` on a pooled client. A raw
+`MULTI` does not pin the connection that the following commands go out on, so
+under concurrency the transaction interleaved across connections: some commands
+executed outside a transaction, others returned the literal `+QUEUED` where a
+value was expected. Sessions were being written incorrectly under load, and login
+was failing outright a fifth of the time. Fixed by using `TxPipeline`.
+
+The second error was in the measurement, not the service: `GetRoomInfo` returning
+"no this user" is a *business* outcome, and this change had been mapping every
+RPC error to 503. rpcx distinguishes the two — a `ServiceError` is the remote
+method returning an error, anything else is the call itself failing — so only the
+latter is now reported as unavailable.
+
+After both fixes the error floor is zero up to 500 VUs, against 10.6% before.
+
+None of this was visible before this work: seven of the API's RPC wrappers
+discarded the call error, and the zero value of the reply's `Code` field is
+`CodeSuccess`, so **a failed call was reported to the client as a success**. The
+January numbers were measured on a build with the Redis bug in it, silently. How
+much of that 600 VU collapse was congestion and how much was a corrupted session
+store is not knowable from the artifacts.
+
 ## Gaps to close
 
 Ordered by how much each would change what this document can claim.
@@ -213,19 +352,22 @@ Ordered by how much each would change what this document can claim.
 6. **Finer ladder near the limits.** 1,000-VU steps in the full-system run are
    too coarse to locate the limit, and the capacity baseline never resolves what
    happens between 550 and 600 VUs, which is where the cliff is.
-7. **Make failures visible at the HTTP layer.** Every response is HTTP 200 today,
-   so an application-level failure is indistinguishable from a success to any
-   HTTP client, this load test included. Until a refusal can be seen as a 429 and
-   an upstream failure as a 503, shedding cannot be measured even if it is
-   implemented.
-8. **Bound the RPC to logic.** rpcx has no per-call timeout option; a deadline
-   has to come from the context, and none is set today, so an api goroutine waits
-   indefinitely on a slow logic call. rpcx propagates a context deadline to the
-   server as request metadata, so setting one also stops logic working on
-   requests whose callers have gone.
-9. **Add a load-shedding path**, then re-run to show the 600 VU step degrading
-   instead of collapsing. This is the one item that changes the system rather
-   than the measurement, and it depends on 7 and 8.
+7. ~~Make failures visible at the HTTP layer.~~ Done: failure codes carry a
+   matching HTTP status, so a refusal is a 429 and an upstream failure a 503.
+8. ~~Bound the RPC to logic.~~ Done: a context deadline, default 2 s, on every
+   outbound call.
+9. ~~Add a load-shedding path.~~ Done, and measured in
+   [Overload behaviour](#overload-behaviour-2026-08). It bounds latency past
+   capacity; whether it prevents the January collapse is still untested, because
+   the collapse could not be reproduced on the newer hardware.
+10. **Tune `maxInFlight`.** 512 is the first value tried, and the throughput dip
+    at 1,600 VUs says it is set below what the service can sustain. Sweep it and
+    pick the point where added latency stops buying throughput.
+11. **Reproduce the collapse.** Either on slower hardware or with a much longer
+    ladder. Without it, the strongest claim about shedding remains unproven.
+12. **Re-run the January mixes on current hardware**, so that one set of numbers
+    describes the current build end to end instead of two sets describing
+    different ones.
 
 ## Reproducing
 
@@ -241,8 +383,16 @@ make loadtest-full K6_START_VUS=1000 K6_END_VUS=5000 K6_STEP_VUS=1000 \
 # Same build with the auth cache off, for the A/B
 AUTH_CACHE_ENABLED=false make loadtest-capacity
 
+# The overload A/B. One arm per configuration, same ladder, same build;
+# ADMISSION_ENABLED and RPC_TIMEOUT are read by the api service.
+make loadtest-capacity K6_START_VUS=400 K6_END_VUS=2800 K6_STEP_VUS=400 \
+    K6_STEP_DURATION=30s K6_RAMP_DURATION=15s K6_WARMUP_DURATION=15s
+
 make loadtest-stop
 ```
+
+Flush Redis and truncate `users` between arms, or the second run starts with the
+first one's sessions warm. `make loadtest-start` does both.
 
 Reports land in `loadtest/reports/`. The `*-steps.json` files are tracked; the
 HTML reports and raw k6 JSON are ignored because of their size. Open

@@ -111,6 +111,22 @@ plaintext password. `GOCHAT_BCRYPT_COST` lowers the cost factor for load tests
 so that the login path measures the service rather than the KDF; it must not be
 lowered outside load testing.
 
+### Overload behaviour
+
+The API bounds in-flight requests and refuses the excess with HTTP 429
+(`pkg/middleware/admission.go`), and every outbound RPC carries a deadline
+(`pkg/middleware/rpcx_client.go`). Both exist because unbounded queueing turned
+overload into an unrecoverable collapse; see `docs/adr/0009`.
+
+- `[api-admission]` in `config/{env}/api.toml`; `ADMISSION_ENABLED` and
+  `ADMISSION_MAX_IN_FLIGHT` override it so one build can be measured both ways.
+- `[common-rpc] timeout`, overridable with `RPC_TIMEOUT`.
+- `maxInFlight` is calibrated by load test, not derived. Re-check it when the
+  hardware or the request mix changes.
+
+A shed request is not a failed request. Keep the two apart in any metric or
+report, or graceful degradation will look worse than collapsing.
+
 ## Docker Compose
 
 Base: `docker-compose.yml`
@@ -132,6 +148,7 @@ All services expose Prometheus metrics. Scraped by Prometheus, visualized in Gra
 - `docs/benchmarks.md` - measured capacity and bottleneck analysis.
 
 When a decision changes, edit its record in place rather than adding a new one.
+
 ## Coding Style
 
 - All code and comments must be written in English.
