@@ -54,12 +54,15 @@ func (rpc *RpcLogic) Register(ctx context.Context, args *proto.RegisterRequest, 
 	userData := make(map[string]interface{})
 	userData["userId"] = userId
 	userData["userName"] = args.Name
-	RedisSessClient.Do("MULTI")
-	RedisSessClient.HMSet(sessionId, userData)
-	RedisSessClient.Expire(sessionId, 86400*time.Second)
-	err = RedisSessClient.Do("EXEC").Err()
-	if err != nil {
-		logrus.Infof("register set redis token fail!")
+	// TxPipeline, not Do("MULTI")/Do("EXEC"). The client is a pool, and a raw
+	// MULTI does not pin the connection the following commands go out on, so
+	// under concurrency the transaction interleaves across connections and the
+	// commands fail with "EXEC without MULTI" or return a raw "+QUEUED".
+	pipe := RedisSessClient.TxPipeline()
+	pipe.HMSet(sessionId, userData)
+	pipe.Expire(sessionId, 86400*time.Second)
+	if _, err = pipe.Exec(); err != nil {
+		logrus.Errorf("register set redis token fail: %v", err)
 		return err
 	}
 	reply.Code = config.SuccessReplyCode
@@ -107,14 +110,13 @@ func (rpc *RpcLogic) Login(ctx context.Context, args *proto.LoginRequest, reply 
 			return errors.New("logout user fail!token is:" + token)
 		}
 	}
-	RedisSessClient.Do("MULTI")
-	RedisSessClient.HMSet(sessionId, userData)
-	RedisSessClient.Expire(sessionId, 86400*time.Second)
-	RedisSessClient.Set(loginSessionId, randToken, 86400*time.Second)
-	err = RedisSessClient.Do("EXEC").Err()
-	//err = RedisSessClient.Set(authToken, data.Id, 86400*time.Second).Err()
-	if err != nil {
-		logrus.Infof("register set redis token fail!")
+	// See the note in Register: a pooled client needs TxPipeline, not a raw MULTI.
+	pipe := RedisSessClient.TxPipeline()
+	pipe.HMSet(sessionId, userData)
+	pipe.Expire(sessionId, 86400*time.Second)
+	pipe.Set(loginSessionId, randToken, 86400*time.Second)
+	if _, err = pipe.Exec(); err != nil {
+		logrus.Errorf("login set redis token fail: %v", err)
 		return err
 	}
 	reply.Code = config.SuccessReplyCode
