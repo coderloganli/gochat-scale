@@ -12,8 +12,9 @@ Numbers from `loadtest/reports/`, tracked in git so they can be checked:
 | Capacity baseline (HTTP) | 550 VUs | 3,906 req/s | 220 ms | 600 VUs |
 
 Both mixes plateau near 5,700 req/s, and the baseline run shows the service
-collapsing without shedding load past its knee — no 429s, no 5xx, just clients
-timing out. Method, full per-step tables, the analysis and the known gaps are in
+collapsing rather than shedding load past its knee: at 600 VUs a tenth of
+requests hit the client timeout, and it never recovers. Method, full per-step
+tables, the analysis and the known gaps are in
 **[docs/benchmarks.md](./docs/benchmarks.md)**.
 
 > Measured on `78bce1c`, before the PostgreSQL and bcrypt changes. See the doc

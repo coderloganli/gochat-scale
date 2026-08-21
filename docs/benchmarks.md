@@ -20,8 +20,8 @@ git so the figures can be checked rather than taken on trust:
   errors — but peak throughput is at 350 VUs, and the service collapses
   irrecoverably at 600 VUs.
 - **The collapse is the interesting result.** Past the knee the service queues
-  without bound instead of shedding load: no 429s, no 5xx, just clients timing
-  out at 60 s, and it never recovers for the rest of the run.
+  without bound instead of shedding load: a tenth of requests hit the client's
+  60 s timeout, and it never recovers for the remaining eight steps of the run.
 
 ## What was measured, and on what
 
@@ -69,6 +69,16 @@ passes, **bottleneck** is the first step that fails. Both are resolution-limited
 by the step size — a capacity of 2,000 VUs on a ladder that jumps by 1,000 means
 "somewhere in [2000, 3000)", not 2,000 exactly.
 
+**What the error rate actually counts.** A request counts as failed if it times
+out or returns a status of 400 or above. The API returns HTTP 200 for every
+response, including its own failures, which it signals through a `code` field in
+the body (`tools/response.go`). So in these runs the error rate is a timeout rate
+under another name, and a request that failed quickly with `code: 1` was counted
+as a success. Nothing in the results below appears to be affected — the failing
+steps failed by timing out — but the measurement cannot currently distinguish
+"served correctly" from "refused instantly", and that distinction is the whole
+point of load shedding.
+
 ## Run 1 — Capacity baseline
 
 HTTP only. Per iteration: `login` ×1, `checkAuth` ×1, `push` ×3, `pushRoom` ×3,
@@ -105,12 +115,29 @@ rest were served normally. Then it never comes back — every remaining step run
 at 100% timeouts and near-zero throughput, even though offered load kept
 increasing in the same gradual way it had before.
 
-The counters say why: **0 4xx, 0 5xx and 0 429 across the entire run.** Nothing
-was ever rejected. The service accepted every connection and queued it until the
-client gave up, and the backlog never drained. There is no admission control, no
-bounded queue with a fast rejection path, and no connection cap. Adding one would
-not raise the ceiling, but it would turn a hard outage into graceful degradation
-— the 600 VU step would return 429s instead of dying.
+The shape says why. Nothing was rejected and nothing drained: the service
+accepted every connection, queued it, and kept queueing while the backlog grew
+past the point where anything it finished was still wanted. By the later steps
+every request that finally reached a handler had already been abandoned by its
+client, so the work was spent producing results nobody was waiting for — which is
+why increasing load in the same gradual increments never let it recover.
+
+There is no admission control anywhere in the request path: no bounded queue with
+a fast rejection path, no connection cap, and no deadline on the RPC to logic, so
+an api goroutine waits indefinitely on a slow call. Adding admission control
+would not raise the ceiling, but it would turn a hard outage into graceful
+degradation — the 600 VU step would shed the excess and keep serving the rest.
+
+> **A caveat on this run's counters, and a correction.** The table shows 0 4xx,
+> 0 5xx and 0 429, and an earlier version of this document offered that as
+> evidence that nothing was ever rejected. It is not evidence. `tools/response.go`
+> answers **every** request with HTTP 200 and puts the real status in a `code`
+> field in the JSON body, so those three counters were zero by construction and
+> would have been zero no matter how the service behaved. The claim above rests
+> on the timeouts and the failure to recover, which are real, and on the absence
+> of any shedding path in the code. See [Gaps to close](#gaps-to-close): making
+> failures visible at the HTTP layer has to come before shedding can be measured
+> at all.
 
 Message throughput at these points: ~3,408 msg/s at the knee, ~2,344 msg/s at SLO
 capacity (6 of every 10 requests are sends).
@@ -132,9 +159,11 @@ total. Note the coarse ladder: it locates the limit to within 1,000 VUs, no fine
 | 4,000 | 5,416 | 3,869 | 1,103 | 1,428 | 2,972 | 0% | fail |
 | 5,000 | 3,591 | 2,565 | 3,423 | 4,673 | 7,592 | 0% | fail |
 
-**This mix is latency-bound, not error-bound.** Zero errors and zero timeouts at
-every step, including the failing ones — the service kept answering all the way
-to 5,000 VUs, just far too slowly. Throughput sits on a plateau of roughly
+**This mix is latency-bound, not error-bound.** Zero timeouts at every step,
+including the failing ones — the service kept answering all the way to 5,000 VUs,
+just far too slowly. (The zero error rate carries less weight than it looks:
+because every response is HTTP 200, the only failures this run could observe were
+timeouts. See the caveat under Run 1.) Throughput sits on a plateau of roughly
 5,400–5,800 req/s from 2,000 through 4,000 VUs while p95 grows 3×, which is the
 textbook shape of a saturated server: the queue absorbs the extra concurrency and
 hands it back as latency.
@@ -184,9 +213,19 @@ Ordered by how much each would change what this document can claim.
 6. **Finer ladder near the limits.** 1,000-VU steps in the full-system run are
    too coarse to locate the limit, and the capacity baseline never resolves what
    happens between 550 and 600 VUs, which is where the cliff is.
-7. **Add a load-shedding path**, then re-run to show the 600 VU step degrading
+7. **Make failures visible at the HTTP layer.** Every response is HTTP 200 today,
+   so an application-level failure is indistinguishable from a success to any
+   HTTP client, this load test included. Until a refusal can be seen as a 429 and
+   an upstream failure as a 503, shedding cannot be measured even if it is
+   implemented.
+8. **Bound the RPC to logic.** rpcx has no per-call timeout option; a deadline
+   has to come from the context, and none is set today, so an api goroutine waits
+   indefinitely on a slow logic call. rpcx propagates a context deadline to the
+   server as request metadata, so setting one also stops logic working on
+   requests whose callers have gone.
+9. **Add a load-shedding path**, then re-run to show the 600 VU step degrading
    instead of collapsing. This is the one item that changes the system rather
-   than the measurement.
+   than the measurement, and it depends on 7 and 8.
 
 ## Reproducing
 

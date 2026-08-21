@@ -102,6 +102,13 @@ database a single shared dependency rather than a coupling between every service
 the postgres container on first start, or via `make db-migrate`. The table is
 named `users`, not `user`, because `user` is reserved in PostgreSQL.
 
+**The API answers HTTP 200 to everything.** Success, auth failure, bad input and
+upstream failure all come back as 200 with the real status in a `code` field in
+the JSON body (`tools/response.go`). This is inherited from upstream and is worth
+knowing before reading any handler, because it means an HTTP client — including
+the load test — cannot tell a failure from a success without parsing the body.
+See the caveat in `docs/benchmarks.md`.
+
 **Metrics ports are fixed per role**: logic 9091, connect-ws 9092, connect-tcp
 9093, task 9094, api 9095, site 9096. Prometheus scrapes them over the compose
 network. Only the dev overlay publishes them to the host — the base compose file
@@ -122,6 +129,10 @@ Recorded here because they are structural, not bugs to be fixed in passing:
 
 - **No load shedding.** Past its knee the system queues without bound and
   collapses rather than degrading. Measured and analysed in `docs/benchmarks.md`.
+- **No deadline on outbound RPC.** rpcx has no per-call timeout option — a
+  deadline has to come from the context, and none is set (`pkg/middleware/
+  rpcx_client.go`). An api goroutine therefore waits indefinitely on a slow logic
+  call, which is the mechanism behind the collapse above.
 - **Messages are lost if a connect instance dies while they are queued.** `task`
   resolves `serverId` at delivery time; if that instance is gone, the message is
   dropped rather than redelivered to wherever the user reconnected
