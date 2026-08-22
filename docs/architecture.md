@@ -123,23 +123,34 @@ itself.
 is tracked in git so that any figure quoted in the documentation can be checked
 against the run that produced it. See `docs/benchmarks.md`.
 
+**No module handles its own signals.** Each entry point is
+`Start() (lifecycle.Stopper, error)`: it starts its work, returns a way to stop
+it, and does not block. `main.go` installs the one signal handler and calls
+`pkg/lifecycle.WaitAndStop`, which runs the stopper under a five second cap. That
+cap is a constant, not a configuration key. `connect` uses it to leave the
+cluster in order — deregister from etcd, refuse new connections, send every live
+connection a 1001 close frame, let the existing disconnect path clear Redis —
+which is the difference between a restart that costs a two-minute routing hole
+and one that costs a reconnect. `GOCHAT_GRACEFUL_SHUTDOWN=false` restores the old
+hard-kill behaviour and exists only to produce the control arm of the measurement
+in `docs/benchmarks.md`.
+
 ## Known gaps
 
 Recorded here because they are structural, not bugs to be fixed in passing:
 
-- **No load shedding.** Past its knee the system queues without bound and
-  collapses rather than degrading. Measured and analysed in `docs/benchmarks.md`.
-- **No deadline on outbound RPC.** rpcx has no per-call timeout option — a
-  deadline has to come from the context, and none is set (`pkg/middleware/
-  rpcx_client.go`). An api goroutine therefore waits indefinitely on a slow logic
-  call, which is the mechanism behind the collapse above.
-- **Messages are lost if a connect instance dies while they are queued.** `task`
-  resolves `serverId` at delivery time; if that instance is gone, the message is
+- **Messages queued for a departing connect instance are still lost.** `task`
+  resolves `serverId` at delivery time; if that instance has gone, the message is
   dropped rather than redelivered to wherever the user reconnected
-  (`task/push.go`).
-- **The tracer is shut down immediately after startup.** `Run()` registers
-  `defer shutdown()` and then returns, while the process waits for a signal in
-  `main.go`. Affects logic and connect.
+  (`task/push.go`). Graceful shutdown narrows the window from the two-minute etcd
+  TTL to the length of a shutdown, but does not close it.
+- **Shutdown does not drain queued messages.** A message already sitting in a
+  channel's `broadcast` buffer when the signal arrives may not be written. The
+  five second cap covers the close handshake only — see
+  `docs/adr/0010-a-departing-connect-instance-deregisters-before-it-closes-connections.md`.
+- **The bundled frontend does not reconnect.** connect now sends a 1001 close
+  frame so a client can tell a planned shutdown from a failure, but `site/` is a
+  prebuilt bundle with no source here and does not act on it.
 - **Prometheus scrapes logic through a static target**, so with several logic
   replicas its logic metrics describe whichever replica DNS resolves to.
 

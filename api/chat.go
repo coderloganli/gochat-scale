@@ -9,15 +9,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"gochat/api/router"
 	"gochat/api/rpc"
 	"gochat/config"
+	"gochat/pkg/lifecycle"
+	"gochat/pkg/metrics"
 	"gochat/pkg/tracing"
 
 	"github.com/gin-gonic/gin"
@@ -25,15 +25,19 @@ import (
 )
 
 type Chat struct {
+	srv            *http.Server
+	tracerShutdown func(context.Context) error
 }
 
 func New() *Chat {
 	return &Chat{}
 }
 
-// api server,Also, you can use gin,echo ... framework wrap
-func (c *Chat) Run() {
-	// Initialize tracer
+// Start brings the api up and returns the way to stop it. It does not block,
+// and it does not install a signal handler of its own: main.go owns the signal
+// and pkg/lifecycle owns the budget.
+func (c *Chat) Start() (lifecycle.Stopper, error) {
+	// Initialize tracer; its shutdown goes into the stopper.
 	tracingCfg := tracing.Config{
 		Enabled:      config.Conf.Common.CommonTracing.Enabled,
 		Endpoint:     config.Conf.Common.CommonTracing.Endpoint,
@@ -43,11 +47,7 @@ func (c *Chat) Run() {
 	if err != nil {
 		logrus.Errorf("Failed to initialize tracer: %v", err)
 	} else {
-		defer func() {
-			if err := shutdown(context.Background()); err != nil {
-				logrus.Errorf("Failed to shutdown tracer: %v", err)
-			}
-		}()
+		c.tracerShutdown = shutdown
 	}
 
 	//init rpc client
@@ -61,27 +61,47 @@ func (c *Chat) Run() {
 	port := apiConfig.ApiBase.ListenPort
 	flag.Parse()
 
-	srv := &http.Server{
+	c.srv = &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
 
+	// Bind before returning, so a port already in use is a startup error rather
+	// than something the process discovers later.
+	ln, err := net.Listen("tcp", c.srv.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("api listen: %w", err)
+	}
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := c.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logrus.Errorf("start listen : %s\n", err)
 		}
 	}()
-	// if have two quit signal , this signal will priority capture ,also can graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	<-quit
-	logrus.Infof("Shutdown Server ...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		logrus.Errorf("Server Shutdown: %v", err)
+	return c.Stop, nil
+}
+
+// Stop refuses new requests and lets the ones in flight finish, within the
+// caller's budget.
+func (c *Chat) Stop(ctx context.Context) error {
+	metrics.SetDraining()
+
+	var firstErr error
+	if c.srv != nil {
+		if err := c.srv.Shutdown(ctx); err != nil {
+			logrus.Errorf("Server Shutdown: %v", err)
+			firstErr = err
+		}
 	}
-	logrus.Infof("Server exiting")
-	os.Exit(0)
+	if c.tracerShutdown != nil {
+		stopCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		if err := c.tracerShutdown(stopCtx); err != nil {
+			logrus.Warnf("api tracer shutdown: %v", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+		cancel()
+	}
+	return firstErr
 }

@@ -24,7 +24,14 @@ import (
 
 const maxInt = 1<<31 - 1
 
-func init() {
+// initTcpLogicRpc prepares the api-layer logic client that the TCP room push at
+// the bottom of this file uses.
+//
+// This used to run in an init(), so importing this package dialled etcd and
+// called logrus.Fatalf when it could not reach it — which made the whole connect
+// package impossible to unit test. Startup side effects belong in a start
+// function, the same way db.Init does.
+func initTcpLogicRpc() {
 	rpc.InitLogicRpcClient()
 }
 
@@ -46,6 +53,10 @@ func (c *Connect) InitTcpServer() error {
 			return err
 		}
 		logrus.Infof("start tcp listen at:%s", ipPort)
+		// Kept, so that shutdown can close them. Without the handle the
+		// acceptTcp goroutines below sit in AcceptTCP with nothing able to
+		// unblock them.
+		c.tcpListeners = append(c.tcpListeners, listener)
 		// cpu core num
 		for i := 0; i < cpuNum; i++ {
 			go c.acceptTcp(listener)
@@ -65,6 +76,12 @@ func (c *Connect) acceptTcp(listener *net.TCPListener) {
 		if conn, err = listener.AcceptTCP(); err != nil {
 			logrus.Errorf("listener.Accept(\"%s\") error(%v)", listener.Addr().String(), err)
 			return
+		}
+		// A departing instance refuses new work before it starts closing the
+		// old, so that the drain converges instead of racing new arrivals.
+		if DefaultServer.Draining() {
+			_ = conn.Close()
+			continue
 		}
 		// set keep alive，client==server ping package check
 		if err = conn.SetKeepAlive(connectTcpConfig.KeepAlive); err != nil {
@@ -93,12 +110,19 @@ func (c *Connect) ServeTcp(server *Server, conn *net.TCPConn, r int) {
 	var ch *Channel
 	ch = NewChannel(server.Options.BroadcastSize)
 	ch.connTcp = conn
+	// Registered before the read loop starts, for the same reason as the
+	// websocket path: a connection that has not authenticated belongs to no
+	// bucket, and shutdown still has to be able to find it.
+	server.Registry.Add(ch)
 	go c.writeDataToTcp(server, ch)
 	go c.readDataFromTcp(server, ch)
 }
 
 func (c *Connect) readDataFromTcp(s *Server, ch *Channel) {
 	defer func() {
+		// Removed last; see the note in server.go's readPump.
+		defer s.Registry.Remove(ch)
+
 		close(ch.done)
 		logrus.Infof("start exec disConnect ...")
 		if ch.Room == nil || ch.userId == 0 {
@@ -110,6 +134,7 @@ func (c *Connect) readDataFromTcp(s *Server, ch *Channel) {
 		disConnectRequest := new(proto.DisConnectRequest)
 		disConnectRequest.RoomId = ch.Room.Id
 		disConnectRequest.UserId = ch.userId
+		disConnectRequest.ServerId = c.ServerId
 		s.Bucket(ch.userId).DeleteChannel(ch)
 		if err := s.operator.DisConnect(disConnectRequest); err != nil {
 			logrus.Warnf("DisConnect rpc err :%s", err.Error())

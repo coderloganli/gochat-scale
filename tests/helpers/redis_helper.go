@@ -2,6 +2,7 @@
 package helpers
 
 import (
+	"fmt"
 	"github.com/go-redis/redis"
 )
 
@@ -57,8 +58,11 @@ func (h *RedisHelper) KeyExists(key string) (bool, error) {
 }
 
 // GetRoomUserCount gets the number of users in a room
+//
+// The key is formatted, not concatenated: string(rune(1)) is "\x01", so the old
+// form looked up "gochat_room_\x01" and returned 0 for every room.
 func (h *RedisHelper) GetRoomUserCount(roomId int) (int64, error) {
-	key := "gochat_room_" + string(rune(roomId))
+	key := fmt.Sprintf("gochat_room_%d", roomId)
 	return h.Client.HLen(key).Result()
 }
 

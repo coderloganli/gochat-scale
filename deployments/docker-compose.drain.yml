@@ -1,0 +1,27 @@
+# Overlay for the shutdown measurement, `make drain-demo`.
+#
+# The base file publishes connect-ws on fixed host ports, which makes
+# `--scale connect-ws=2` fail — the same problem that was already solved for
+# logic's 9091 by moving it to the dev overlay. Only the measurement needs
+# replicas, so the ephemeral ports go here and dev keeps its predictable ones.
+#
+# tools/drainbench discovers each replica with
+# `docker compose port connect-ws 7000 --index N`.
+version: '3.8'
+
+services:
+  etcd:
+    ports:
+      - "2379:2379"   # drainbench reads registrations directly
+
+  api:
+    ports:
+      - "7070:7070"
+
+  connect-ws:
+    # !override, not a plain list: compose merges ports by appending, so without
+    # it the base file's fixed "7000:7000" stays and the second replica cannot
+    # bind.
+    ports: !override
+      - "7000"        # ephemeral host port, one per replica
+      - "9092"

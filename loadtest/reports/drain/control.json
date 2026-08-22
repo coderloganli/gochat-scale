@@ -1,0 +1,17 @@
+{
+  "arm": "control",
+  "restartedConnections": 25,
+  "survivingConnections": 25,
+  "closedWithGoingAway": 0,
+  "closedWithOtherCloseCode": 25,
+  "closedWithoutACloseCode": 0,
+  "stillOpenAtEndOfWindow": 0,
+  "noticeP50": 46713900,
+  "noticeP95": 48723000,
+  "noticeMax": 48723000,
+  "etcdResidencyAfterStop": 20073110900,
+  "etcdNodeStillPresentAtEndOfWindow": true,
+  "roomMessagesSent": 99,
+  "framesReceivedOnSurvivingReplica": 2475,
+  "survivingConnectionsClosedByTheRestart": 0
+}

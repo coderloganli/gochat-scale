@@ -71,6 +71,10 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Start services for integration tests
+        env:
+          # Dev samples traces at 1%, which makes "traces exist" a test that
+          # fails at random. See docs/adr/0011.
+          TRACING_SAMPLING_RATE: "1.0"
         run: |
           docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml up -d --build
           echo "Waiting for services to be healthy..."
@@ -99,13 +103,16 @@ jobs:
 
       - name: Run integration tests
         run: |
-          go test -v -race -timeout 10m ./tests/integration/...
+          go test -v -race -timeout 15m ./tests/integration/...
         env:
           TEST_API_URL: http://localhost:7070
           TEST_WS_URL: ws://localhost:7000/ws
           TEST_TCP_ADDR: localhost:7001
           TEST_REDIS_ADDR: localhost:6379
           TEST_ETCD_ADDR: localhost:2379
+          # The shutdown tests restart services, so they need the same -f
+          # arguments the stack above was started with.
+          TEST_COMPOSE_FILES: docker-compose.yml,deployments/docker-compose.test.yml
 
       - name: Collect service logs on failure
         if: failure()

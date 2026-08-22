@@ -5,17 +5,40 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"time"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
 
-// StartMetricsServer starts an HTTP server for Prometheus metrics and pprof endpoints
-func StartMetricsServer(port int) *http.Server {
+// draining is set once a shutdown has begun. It gives /health two meanings —
+// alive, and ready — which is the distinction a load balancer or a Kubernetes
+// readiness probe needs to stop sending work to an instance that is on its way
+// out.
+var draining atomic.Bool
+
+// SetDraining marks this process as shutting down. Once set, /health reports
+// that the process is no longer ready to take work, while /metrics keeps
+// serving so that the shutdown itself stays observable.
+func SetDraining() {
+	draining.Store(true)
+}
+
+// Draining reports whether a shutdown has begun.
+func Draining() bool {
+	return draining.Load()
+}
+
+// newMux builds the handler served on the metrics port.
+func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if draining.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("draining"))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
@@ -33,9 +56,14 @@ func StartMetricsServer(port int) *http.Server {
 	mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
 	mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
 
+	return mux
+}
+
+// StartMetricsServer starts an HTTP server for Prometheus metrics and pprof endpoints
+func StartMetricsServer(port int) *http.Server {
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: mux,
+		Handler: newMux(),
 	}
 
 	go func() {
@@ -48,9 +76,10 @@ func StartMetricsServer(port int) *http.Server {
 	return srv
 }
 
-// ShutdownMetricsServer gracefully shuts down the metrics server
-func ShutdownMetricsServer(srv *http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+// ShutdownMetricsServer gracefully shuts down the metrics server within the
+// caller's budget. It must not invent a deadline of its own: the whole shutdown
+// is capped by lifecycle.ShutdownTimeout, and a private timeout here would be
+// added on top of that cap rather than fitting inside it.
+func ShutdownMetricsServer(ctx context.Context, srv *http.Server) error {
 	return srv.Shutdown(ctx)
 }

@@ -85,17 +85,27 @@ func (b *Bucket) Put(userId int, roomId int, ch *Channel) (err error) {
 	return
 }
 
+// DeleteChannel removes a channel from this bucket and from its room.
+//
+// The two are not the same condition. The user map holds one channel per user
+// and Put overwrites it, so clearing it unconditionally would let an older
+// connection's teardown remove a newer one's entry and leave that user
+// connected but undeliverable — a drain is when that fires, because every
+// client reconnects while the departing instance is still tearing their old
+// connection down. The room list, in contrast, holds this channel regardless of
+// which one the user map points at, so it always has to be cleaned.
 func (b *Bucket) DeleteChannel(ch *Channel) {
-	var (
-		ok   bool
-		room *Room
-	)
 	b.cLock.Lock()
-	if ch, ok = b.chs[ch.userId]; ok {
-		room = b.chs[ch.userId].Room
+	// The user map holds one channel per user, so it is only ours to clear when
+	// it still points at this channel.
+	if mapped, ok := b.chs[ch.userId]; ok && mapped == ch {
 		//delete from bucket
 		delete(b.chs, ch.userId)
 	}
+	// The room is not conditional. This channel is in its own room's list
+	// whether or not it is still the mapped one, and leaving it there would keep
+	// it in every room broadcast and stop the room from ever being dropped.
+	room := ch.Room
 	if room != nil && room.DeleteChannel(ch) {
 		// if room empty delete,will mark room.drop is true
 		if room.drop == true {

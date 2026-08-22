@@ -9,7 +9,13 @@ import (
 	"github.com/gorilla/websocket"
 	"gochat/proto"
 	"net"
+	"sync/atomic"
 )
+
+// channelSeq spreads channels across the registry's shards. It is assigned once
+// at creation and never changes, so Add and Remove agree on where a channel
+// lives without writing to it.
+var channelSeq uint32
 
 // in fact, Channel it's a user Connect session
 type Channel struct {
@@ -21,6 +27,7 @@ type Channel struct {
 	userId    int
 	conn      *websocket.Conn
 	connTcp   *net.TCPConn
+	shard     uint32
 }
 
 func NewChannel(size int) (c *Channel) {
@@ -29,6 +36,7 @@ func NewChannel(size int) (c *Channel) {
 	c.done = make(chan struct{})
 	c.Next = nil
 	c.Prev = nil
+	c.shard = atomic.AddUint32(&channelSeq, 1)
 	return
 }
 

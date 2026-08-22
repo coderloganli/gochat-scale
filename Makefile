@@ -145,17 +145,21 @@ test-unit:
 	@echo "Running unit tests..."
 	go test -v -short ./...
 
+# TRACING_SAMPLING_RATE=1.0: dev samples at 1%, which makes "traces exist" a
+# test that fails at random. The shutdown tests restart services through
+# docker compose, so they need the same -f arguments the stack was started with.
 test-integration:
 	@echo "Running integration tests with Docker..."
 	@echo "Starting services..."
-	docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml up -d --build
+	TRACING_SAMPLING_RATE=1.0 docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml up -d --build
 	@echo "Waiting for services to be healthy..."
 	@sleep 30
 	@echo "Running integration tests from host..."
 	TEST_API_URL=http://localhost:7070 \
 	TEST_WS_URL=ws://localhost:7000/ws \
 	TEST_REDIS_ADDR=localhost:6379 \
-	go test -v -race -timeout 10m ./tests/integration/... || (docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down && exit 1)
+	TEST_COMPOSE_FILES=docker-compose.yml,deployments/docker-compose.test.yml \
+	go test -v -race -timeout 15m ./tests/integration/... || (docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down && exit 1)
 	@echo "Stopping services..."
 	docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down
 
@@ -164,7 +168,8 @@ test-integration-quick:
 	TEST_API_URL=http://localhost:7070 \
 	TEST_WS_URL=ws://localhost:7000/ws \
 	TEST_REDIS_ADDR=localhost:6379 \
-	go test -v -race -timeout 10m ./tests/integration/...
+	TEST_COMPOSE_FILES=docker-compose.yml,deployments/docker-compose.test.yml \
+	go test -v -race -timeout 15m ./tests/integration/...
 
 # Code quality targets
 fmt:
@@ -452,3 +457,9 @@ loadtest-clean:
 	rm -rf loadtest/reports/*.json loadtest/reports/*.html loadtest/reports/*.txt 2>/dev/null || true
 	$(LOADTEST_COMPOSE) down -v 2>/dev/null || true
 	@echo "Load test cleanup complete"
+
+# Measure what a connect instance's departure costs its clients, with graceful
+# shutdown on and then off. One image, one procedure, one variable changed.
+drain-demo:
+	@echo "Running the shutdown A/B..."
+	bash scripts/drain-demo.sh

@@ -8,43 +8,57 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+
 	"gochat/api"
 	"gochat/connect"
 	"gochat/logic"
+	"gochat/pkg/lifecycle"
 	"gochat/pkg/logging"
 	"gochat/site"
 	"gochat/task"
-	"os"
-	"os/signal"
-	"syscall"
+
+	"github.com/sirupsen/logrus"
 )
+
+// start dispatches to the module's entry point. Every one of them starts its
+// work and hands back a way to stop it; none of them block, and none of them
+// handle signals. That uniformity is the point: whether a module reacts to
+// SIGTERM used to depend on whether its Run happened to have returned yet.
+func start(module string) (lifecycle.Stopper, error) {
+	switch module {
+	case "logic":
+		return logic.New().Start()
+	case "connect_websocket":
+		return connect.New().Start()
+	case "connect_tcp":
+		return connect.New().StartTcp()
+	case "task":
+		return task.New().Start()
+	case "api":
+		return api.New().Start()
+	case "site":
+		return site.New().Start()
+	default:
+		return nil, fmt.Errorf("unknown module %q", module)
+	}
+}
 
 func main() {
 	var module string
 	flag.StringVar(&module, "module", "", "assign run module")
 	flag.Parse()
 	logging.InitFromEnv()
+
 	fmt.Println(fmt.Sprintf("start run %s module", module))
-	switch module {
-	case "logic":
-		logic.New().Run()
-	case "connect_websocket":
-		connect.New().Run()
-	case "connect_tcp":
-		connect.New().RunTcp()
-	case "task":
-		task.New().Run()
-	case "api":
-		api.New().Run()
-	case "site":
-		site.New().Run()
-	default:
-		fmt.Println("exiting,module param error!")
-		return
+
+	stop, err := start(module)
+	if err != nil {
+		logrus.Errorf("cannot start %s: %v", module, err)
+		os.Exit(1)
 	}
 	fmt.Println(fmt.Sprintf("run %s module done!", module))
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	<-quit
+
+	lifecycle.WaitAndStop(module, stop)
 	fmt.Println("Server exiting")
 }

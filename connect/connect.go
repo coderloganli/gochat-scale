@@ -8,11 +8,16 @@ package connect
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	_ "net/http/pprof"
 	"runtime"
 	"time"
 
+	rpcxserver "github.com/smallnest/rpcx/server"
+
 	"gochat/config"
+	"gochat/pkg/lifecycle"
 	"gochat/pkg/metrics"
 	"gochat/pkg/tracing"
 
@@ -24,20 +29,37 @@ var DefaultServer *Server
 
 type Connect struct {
 	ServerId string
+
+	// What Stop has to take down. Each is optional: a role that never started
+	// one leaves it nil, and Stop skips it.
+	server          *Server
+	httpSrv         *http.Server
+	rpcServers      []*rpcxserver.Server
+	tcpListeners    []*net.TCPListener
+	metricsSrv      *http.Server
+	tracerShutdown  func(context.Context) error
+	metricsRoleName string
 }
 
 func New() *Connect {
-	return new(Connect)
+	// The websocket role is the default; RunTcp renames itself. The names match
+	// the tracer service names and the compose services, so a shutdown metric
+	// can be told apart from the other role's.
+	return &Connect{metricsRoleName: "connect-ws"}
 }
 
-func (c *Connect) Run() {
+// Start brings up the websocket role and returns the way to stop it. It does
+// not block: main.go owns the signal, and pkg/lifecycle owns the budget.
+func (c *Connect) Start() (lifecycle.Stopper, error) {
 	// get Connect layer config
 	connectConfig := config.Conf.Connect
 
 	//set the maximum number of CPUs that can be executing
 	runtime.GOMAXPROCS(connectConfig.ConnectBucket.CpuNum)
 
-	// Initialize tracer
+	// Initialize tracer. Its shutdown goes into the stopper, not into a defer:
+	// Start returns while the process keeps running, so a defer here would tear
+	// the tracer down a few milliseconds after startup.
 	tracingCfg := tracing.Config{
 		Enabled:      config.Conf.Common.CommonTracing.Enabled,
 		Endpoint:     config.Conf.Common.CommonTracing.Endpoint,
@@ -47,60 +69,45 @@ func (c *Connect) Run() {
 	if err != nil {
 		logrus.Errorf("Failed to initialize tracer: %v", err)
 	} else {
-		defer func() {
-			if err := shutdown(context.Background()); err != nil {
-				logrus.Errorf("Failed to shutdown tracer: %v", err)
-			}
-		}()
+		c.tracerShutdown = shutdown
 	}
 
 	//init metrics server
-	metrics.StartMetricsServer(9092)
+	c.metricsSrv = metrics.StartMetricsServer(9092)
 
 	//init logic layer rpc client, call logic layer rpc server
 	if err := c.InitLogicRpcClient(); err != nil {
-		logrus.Panicf("InitLogicRpcClient err:%s", err.Error())
+		return nil, fmt.Errorf("InitLogicRpcClient: %w", err)
 	}
 	//init Connect layer rpc server, logic client will call this
-	Buckets := make([]*Bucket, connectConfig.ConnectBucket.CpuNum)
-	for i := 0; i < connectConfig.ConnectBucket.CpuNum; i++ {
-		Buckets[i] = NewBucket(BucketOptions{
-			ChannelSize:   connectConfig.ConnectBucket.Channel,
-			RoomSize:      connectConfig.ConnectBucket.Room,
-			RoutineAmount: connectConfig.ConnectBucket.RoutineAmount,
-			RoutineSize:   connectConfig.ConnectBucket.RoutineSize,
-		})
-	}
-	operator := new(DefaultOperator)
-	DefaultServer = NewServer(Buckets, operator, ServerOptions{
-		WriteWait:       10 * time.Second,
-		PongWait:        60 * time.Second,
-		PingPeriod:      54 * time.Second,
-		MaxMessageSize:  512,
-		ReadBufferSize:  512,
-		WriteBufferSize: 512,
-		BroadcastSize:   8,
-	})
+	c.server = newConnectServer(connectConfig)
+	DefaultServer = c.server
 	c.ServerId = fmt.Sprintf("%s-%s", "ws", uuid.New().String())
 	//init Connect layer rpc server ,task layer will call this
 	if err := c.InitConnectWebsocketRpcServer(); err != nil {
-		logrus.Panicf("InitConnectWebsocketRpcServer Fatal error: %s \n", err.Error())
+		return nil, fmt.Errorf("InitConnectWebsocketRpcServer: %w", err)
 	}
 
 	//start Connect layer server handler persistent connection
 	if err := c.InitWebsocket(); err != nil {
-		logrus.Panicf("Connect layer InitWebsocket() error:  %s \n", err.Error())
+		return nil, fmt.Errorf("InitWebsocket: %w", err)
 	}
+
+	return c.Stop, nil
 }
 
-func (c *Connect) RunTcp() {
+// StartTcp brings up the TCP role and returns the way to stop it.
+func (c *Connect) StartTcp() (lifecycle.Stopper, error) {
+	c.metricsRoleName = "connect-tcp"
+	initTcpLogicRpc()
+
 	// get Connect layer config
 	connectConfig := config.Conf.Connect
 
 	//set the maximum number of CPUs that can be executing
 	runtime.GOMAXPROCS(connectConfig.ConnectBucket.CpuNum)
 
-	// Initialize tracer
+	// Initialize tracer; see the note in Start about why this is not a defer.
 	tracingCfg := tracing.Config{
 		Enabled:      config.Conf.Common.CommonTracing.Enabled,
 		Endpoint:     config.Conf.Common.CommonTracing.Endpoint,
@@ -110,32 +117,44 @@ func (c *Connect) RunTcp() {
 	if err != nil {
 		logrus.Errorf("Failed to initialize tracer: %v", err)
 	} else {
-		defer func() {
-			if err := shutdown(context.Background()); err != nil {
-				logrus.Errorf("Failed to shutdown tracer: %v", err)
-			}
-		}()
+		c.tracerShutdown = shutdown
 	}
 
 	//init metrics server
-	metrics.StartMetricsServer(9093)
+	c.metricsSrv = metrics.StartMetricsServer(9093)
 
 	//init logic layer rpc client, call logic layer rpc server
 	if err := c.InitLogicRpcClient(); err != nil {
-		logrus.Panicf("InitLogicRpcClient err:%s", err.Error())
+		return nil, fmt.Errorf("InitLogicRpcClient: %w", err)
 	}
 	//init Connect layer rpc server, logic client will call this
-	Buckets := make([]*Bucket, connectConfig.ConnectBucket.CpuNum)
+	c.server = newConnectServer(connectConfig)
+	DefaultServer = c.server
+	c.ServerId = fmt.Sprintf("%s-%s", "tcp", uuid.New().String())
+	//init Connect layer rpc server ,task layer will call this
+	if err := c.InitConnectTcpRpcServer(); err != nil {
+		return nil, fmt.Errorf("InitConnectTcpRpcServer: %w", err)
+	}
+	//start Connect layer server handler persistent connection by tcp
+	if err := c.InitTcpServer(); err != nil {
+		return nil, fmt.Errorf("InitTcpServer: %w", err)
+	}
+
+	return c.Stop, nil
+}
+
+// newConnectServer builds the bucket set and the server both roles share.
+func newConnectServer(connectConfig config.ConnectConfig) *Server {
+	buckets := make([]*Bucket, connectConfig.ConnectBucket.CpuNum)
 	for i := 0; i < connectConfig.ConnectBucket.CpuNum; i++ {
-		Buckets[i] = NewBucket(BucketOptions{
+		buckets[i] = NewBucket(BucketOptions{
 			ChannelSize:   connectConfig.ConnectBucket.Channel,
 			RoomSize:      connectConfig.ConnectBucket.Room,
 			RoutineAmount: connectConfig.ConnectBucket.RoutineAmount,
 			RoutineSize:   connectConfig.ConnectBucket.RoutineSize,
 		})
 	}
-	operator := new(DefaultOperator)
-	DefaultServer = NewServer(Buckets, operator, ServerOptions{
+	return NewServer(buckets, new(DefaultOperator), ServerOptions{
 		WriteWait:       10 * time.Second,
 		PongWait:        60 * time.Second,
 		PingPeriod:      54 * time.Second,
@@ -144,16 +163,4 @@ func (c *Connect) RunTcp() {
 		WriteBufferSize: 512,
 		BroadcastSize:   8,
 	})
-	//go func() {
-	//	http.ListenAndServe("0.0.0.0:9000", nil)
-	//}()
-	c.ServerId = fmt.Sprintf("%s-%s", "tcp", uuid.New().String())
-	//init Connect layer rpc server ,task layer will call this
-	if err := c.InitConnectTcpRpcServer(); err != nil {
-		logrus.Panicf("InitConnectWebsocketRpcServer Fatal error: %s \n", err.Error())
-	}
-	//start Connect layer server handler persistent connection by tcp
-	if err := c.InitTcpServer(); err != nil {
-		logrus.Panicf("Connect layerInitTcpServer() error:%s\n ", err.Error())
-	}
 }

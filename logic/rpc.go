@@ -355,6 +355,26 @@ func (rpc *RpcLogic) Connect(ctx context.Context, args *proto.ConnectRequest, re
 func (rpc *RpcLogic) DisConnect(ctx context.Context, args *proto.DisConnectRequest, reply *proto.DisConnectReply) (err error) {
 	logic := new(Logic)
 	roomUserKey := logic.getRoomUserKey(strconv.Itoa(args.RoomId))
+
+	// Clear the userId -> serverId routing key first, because what it finds
+	// decides the rest. Until this existed, disconnect left the key behind for
+	// its TTL to collect, so task kept routing to a connect instance the user
+	// had left.
+	outcome, err := logic.clearUserServerId(args.UserId, args.ServerId)
+	if err != nil {
+		logrus.Warnf("clear serverId for user %d: %s", args.UserId, err)
+	}
+
+	// A stale disconnect is one whose user has already reconnected to another
+	// instance. Its room bookkeeping must not run: decrementing the count and
+	// removing the membership for someone who is online right now is exactly the
+	// damage a drain would otherwise do at scale, because every client reconnects
+	// while the departing instance is still tearing their old connection down.
+	if outcome == DisconnectStale {
+		logrus.Infof("disconnect for user %d is stale; they have reconnected elsewhere", args.UserId)
+		return nil
+	}
+
 	// room user count --
 	if args.RoomId > 0 {
 		count, _ := RedisSessClient.Get(logic.getRoomOnlineCountKey(fmt.Sprintf("%d", args.RoomId))).Int()

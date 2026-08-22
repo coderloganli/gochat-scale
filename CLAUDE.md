@@ -127,6 +127,29 @@ overload into an unrecoverable collapse; see `docs/adr/0009`.
 A shed request is not a failed request. Keep the two apart in any metric or
 report, or graceful degradation will look worse than collapsing.
 
+### Shutdown
+
+No module handles its own signals. Each entry point is
+`Start() (lifecycle.Stopper, error)`: it starts its work, returns a way to stop
+it, and does not block. `main.go` installs the one signal handler and calls
+`pkg/lifecycle.WaitAndStop`, which runs the stopper under a five second cap.
+That cap is a constant, not a configuration key.
+
+`connect` uses it to leave the cluster in order — deregister from etcd, refuse
+new connections, send every live connection a 1001 close frame, let the existing
+disconnect path clear Redis — which is the difference between a restart that
+costs a two-minute routing hole and one that costs a reconnect. See
+`docs/adr/0010`.
+
+- `GOCHAT_GRACEFUL_SHUTDOWN=false` restores the old hard-kill behaviour. It is a
+  measurement switch for the A/B in `docs/benchmarks.md`, not an operational one.
+- `make drain-demo` runs both arms and prints the comparison.
+- `/health` on the metrics port answers 503 once a shutdown has begun, while
+  `/metrics` keeps serving. Alive and ready are now two different questions.
+- Never add a `RegisterOnShutdown` hook to an rpcx server. In v1.7.4 the
+  `onShutdown` slice is appended to and never read, so the callback never runs.
+  `Shutdown` is what deregisters.
+
 ## Docker Compose
 
 Base: `docker-compose.yml`
