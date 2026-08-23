@@ -2,24 +2,26 @@ package metrics
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"sync/atomic"
+	"time"
+
+	"gochat/pkg/health"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
 
-// draining is set once a shutdown has begun. It gives /health two meanings —
-// alive, and ready — which is the distinction a load balancer or a Kubernetes
-// readiness probe needs to stop sending work to an instance that is on its way
-// out.
+// draining is set once a shutdown has begun.
 var draining atomic.Bool
 
-// SetDraining marks this process as shutting down. Once set, /health reports
-// that the process is no longer ready to take work, while /metrics keeps
-// serving so that the shutdown itself stays observable.
+// SetDraining marks this process as shutting down. Once set, /ready reports that
+// the process should stop being sent work, while /metrics keeps serving so that
+// the shutdown itself stays observable, and /health keeps saying the process is
+// alive - which it is.
 func SetDraining() {
 	draining.Store(true)
 }
@@ -33,15 +35,21 @@ func Draining() bool {
 func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+
+	// Liveness. Unconditional, and deliberately so - including while draining.
+	//
+	// Draining is the one moment when the difference between the two probes
+	// really bites. A pod on its way out must stop receiving traffic, which is
+	// readiness; it must emphatically not be restarted, which is what a liveness
+	// probe failing would ask the kubelet to do, in the middle of the very
+	// shutdown that is trying to close connections cleanly.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		if draining.Load() {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("draining"))
-			return
-		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+
+	// Readiness: the registered dependency checks, plus the drain state.
+	mux.HandleFunc("/ready", readyHandler)
 
 	// Register pprof endpoints for profiling
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -57,6 +65,44 @@ func newMux() *http.ServeMux {
 	mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
 
 	return mux
+}
+
+// readyCheckTimeout bounds the whole set of readiness checks. A check that
+// hangs must not hang the probe: kubelet would see a timeout rather than a 503,
+// which reports the same thing far less clearly.
+const readyCheckTimeout = 2 * time.Second
+
+func readyHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Checked before the dependency checks, and short-circuiting them. Once the
+	// process is leaving, whether Redis answers is beside the point, and there
+	// is no reason to spend a probe's budget asking.
+	if draining.Load() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]any{"status": "draining"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), readyCheckTimeout)
+	defer cancel()
+
+	ok, failures := health.Run(ctx)
+
+	if ok {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{"status": "ready"})
+		return
+	}
+
+	// 503 rather than 500: the service is not broken, it is not usable yet. The
+	// failing check names are in the body because "not ready" on its own sends
+	// whoever is debugging it to the logs of every dependency in turn.
+	w.WriteHeader(http.StatusServiceUnavailable)
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":   "not ready",
+		"failures": failures,
+	})
 }
 
 // StartMetricsServer starts an HTTP server for Prometheus metrics and pprof endpoints

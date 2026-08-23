@@ -74,6 +74,11 @@ func (logic *Logic) InitRpcServer() (err error) {
 		// Built here rather than inside the goroutine, so that Stop cannot race
 		// the slice it has to walk to deregister.
 		s := logic.newRpcServer(network, addr)
+		if s == nil {
+			// Registration failed; readiness keeps this instance out of the
+			// Service rather than letting it serve unreachable.
+			continue
+		}
 		go func(network, addr string) { _ = s.Serve(network, addr) }(network, addr)
 	}
 	return
@@ -93,7 +98,11 @@ func (logic *Logic) newRpcServer(network string, addr string) *server.Server {
 	// serverId must be unique
 	if err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathLogic, new(RpcLogic), logic.ServerId); err != nil {
 		logrus.Errorf("register error:%s", err.Error())
+		return nil
 	}
+	// Registered in etcd, so api and connect can now discover this address, and
+	// readiness can stop reporting this instance as unreachable.
+	etcdRegistered()
 	logic.rpcServers = append(logic.rpcServers, s)
 	return s
 }

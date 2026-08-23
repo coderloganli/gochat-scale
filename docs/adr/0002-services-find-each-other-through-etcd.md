@@ -47,5 +47,5 @@ config and makes the routing rule invisible from the code.
   registry for up to two minutes. task tolerates a failed call but does not
   redeliver — see the delivery gap in `docs/architecture.md`. An instance that is
   shut down rather than killed deletes its own node first; see
-  [0010](./0010-a-departing-connect-instance-deregisters-before-it-closes-connections.md).
+  [0014](./0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md).
 - Adding a replica requires no configuration change anywhere.

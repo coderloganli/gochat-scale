@@ -1,0 +1,46 @@
+# api scales on in-flight requests, below the shedding threshold.
+#
+# The target is 300 against the maxInFlight of 512 in config/dev/api.toml, so the
+# autoscaler adds capacity before admission control starts refusing requests.
+# ADR 0009 made shedding the floor under overload; this sits above it.
+#
+# They are not alternatives, and they work on different timescales: shedding
+# decides in the 50ms acquire timeout, scaling in tens of seconds, because a
+# metric has to be scraped, relisted and polled before a pod can be created.
+# Against a sharp ramp, shedding will happen first no matter how this is tuned -
+# that is what it is for.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  namespace: gochat
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: gochat_admission_in_flight
+        target:
+          type: AverageValue
+          averageValue: "300"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min

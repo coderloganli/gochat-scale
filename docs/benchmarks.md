@@ -405,7 +405,7 @@ measurement can show is that the information reached the client, not that anyone
 used it.
 
 See
-[ADR 0010](./adr/0010-a-departing-connect-instance-deregisters-before-it-closes-connections.md).
+[ADR 0014](./adr/0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md).
 
 ## Gaps to close
 

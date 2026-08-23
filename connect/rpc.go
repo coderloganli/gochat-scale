@@ -53,6 +53,9 @@ func (c *Connect) InitLogicRpcClient() (err error) {
 		if e != nil {
 			logrus.Fatalf("init connect rpc etcd discovery client fail:%s", e.Error())
 		}
+		// Kept so the readiness check can ask whether any logic instance is
+		// actually registered, rather than finding out on the first call.
+		logicDiscovery = d
 		// Optimized client options for better connection reuse
 		opt := client.Option{
 			Retries:             3,
@@ -110,6 +113,11 @@ func (c *Connect) InitConnectWebsocketRpcServer() (err error) {
 		// Built here rather than inside the goroutine, so that Stop cannot race
 		// the slice it has to walk to deregister.
 		s := c.newConnectRpcServer(network, addr, "ws")
+		if s == nil {
+			// Registration failed; there is nothing to serve on and readiness
+			// will keep this instance out of the Service.
+			continue
+		}
 		go func(network, addr string) { _ = s.Serve(network, addr) }(network, addr)
 	}
 	return
@@ -124,6 +132,11 @@ func (c *Connect) InitConnectTcpRpcServer() (err error) {
 		}
 		logrus.Infof("Connect start run at-->%s:%s", network, addr)
 		s := c.newConnectRpcServer(network, addr, "tcp")
+		if s == nil {
+			// Registration failed; there is nothing to serve on and readiness
+			// will keep this instance out of the Service.
+			continue
+		}
 		go func(network, addr string) { _ = s.Serve(network, addr) }(network, addr)
 	}
 	return
@@ -191,7 +204,15 @@ func (c *Connect) newConnectRpcServer(network, addr, serverType string) *server.
 	if err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush),
 		fmt.Sprintf("serverId=%s&serverType=%s", c.ServerId, serverType)); err != nil {
 		logrus.Errorf("register connect rpc server: %v", err)
+		// Deliberately not calling etcdRegistered(): the readiness gate must stay
+		// shut. A connect instance that is serving but not in the registry is a
+		// black hole - task resolves recipients through etcd and silently drops
+		// what it cannot route.
+		return nil
 	}
+	// Registration is synchronous here, before Serve is spawned, so this is a
+	// fact rather than a race: task can now resolve this address.
+	etcdRegistered()
 	c.rpcServers = append(c.rpcServers, s)
 	return s
 }

@@ -21,6 +21,7 @@ import (
 const (
 	connectService     = "connect-ws"
 	connectHealthURL   = "http://localhost:9092/health"
+	connectReadyURL    = "http://localhost:9092/ready"
 	connectMetricsURL  = "http://localhost:9092/metrics"
 	jaegerServicesURL  = "http://localhost:16686/api/services"
 	shutdownBudget     = 5 * time.Second
@@ -64,14 +65,15 @@ func helpersGetEnv(key, def string) string {
 // the process inside is ready. Without this, a case that follows a restart
 // fails on its first dial and reports a defect in the wrong place.
 //
-// /health is the readiness signal this change introduced: 200 means alive and
-// not draining.
+// /ready is the readiness signal: 200 means the instance is up, has its
+// dependencies, and is not draining. /health only means the process is alive,
+// which is true well before it can serve.
 func waitForConnect(t *testing.T) {
 	t.Helper()
 
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
-		if code, _ := getStatus(connectHealthURL); code == http.StatusOK {
+		if code, _ := getStatus(connectReadyURL); code == http.StatusOK {
 			// Healthy, but the rpc registration and the logic client may still
 			// be settling.
 			time.Sleep(2 * time.Second)
@@ -333,9 +335,15 @@ func TestShutdownDeregistersFromEtcd(t *testing.T) {
 		"routing to an instance that has gone until the TTL expires", shutdownBudget)
 }
 
-// Test case 30: /health answers 503 while the process is still alive and still
-// serving /metrics.
-func TestHealthReportsDrainingWhileStillAlive(t *testing.T) {
+// Test case 30: a draining instance stops being ready before it stops being
+// alive, and stays observable throughout.
+//
+// Revised where this branch met the Kubernetes work: the drain signal is on
+// /ready, not /health. /health is the liveness probe, and a liveness probe that
+// fails asks the kubelet to restart the container - in the middle of the
+// shutdown that is trying to close connections cleanly. Asserting both halves is
+// what this case was always describing; it just had one endpoint to say it with.
+func TestDrainingWithdrawsReadinessWhileStillAlive(t *testing.T) {
 	gracefulOnly(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -356,11 +364,18 @@ func TestHealthReportsDrainingWhileStillAlive(t *testing.T) {
 	var sawDraining bool
 	deadline := time.Now().Add(shutdownBudget)
 	for time.Now().Before(deadline) {
-		code, body := getStatus(connectHealthURL)
+		code, body := getStatus(connectReadyURL)
 		if code == http.StatusServiceUnavailable {
 			sawDraining = true
 			if !strings.Contains(body, "draining") {
-				t.Errorf("/health body while draining is %q, want it to say draining", body)
+				t.Errorf("/ready body while draining is %q, want it to say draining", body)
+			}
+			// The other half, and the reason the signal moved here: the process
+			// is leaving, not broken, so liveness must keep saying it is alive.
+			if code, _ := getStatus(connectHealthURL); code != http.StatusOK {
+				t.Errorf("/health returned %d while draining, want 200 - a liveness "+
+					"probe failing here asks the kubelet to restart a pod that is "+
+					"already shutting down cleanly", code)
 			}
 			if code, _ := getStatus(connectMetricsURL); code != http.StatusOK {
 				t.Errorf("/metrics returned %d while draining, want 200 — a shutdown "+
@@ -372,7 +387,7 @@ func TestHealthReportsDrainingWhileStillAlive(t *testing.T) {
 	}
 
 	if !sawDraining {
-		t.Fatal("/health never reported 503 during the shutdown; nothing can tell that " +
+		t.Fatal("/ready never reported 503 during the shutdown; nothing can tell that " +
 			"this instance stopped being ready before it stopped being alive")
 	}
 	_ = ctx
@@ -443,12 +458,12 @@ func TestUpgradeIsRefusedWhileDraining(t *testing.T) {
 	}()
 
 	// Wait for the drain to have started rather than racing docker's delivery of
-	// the signal: /health flipping to 503 means the process is draining and
+	// the signal: /ready flipping to 503 means the process is draining and
 	// still alive, which is exactly the window this case is about.
 	drainStarted := false
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
-		if code, _ := getStatus(connectHealthURL); code == http.StatusServiceUnavailable {
+		if code, _ := getStatus(connectReadyURL); code == http.StatusServiceUnavailable {
 			drainStarted = true
 			break
 		}

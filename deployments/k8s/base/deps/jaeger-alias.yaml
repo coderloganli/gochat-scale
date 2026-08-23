@@ -1,0 +1,23 @@
+# config/dev/common.toml points tracing at the bare hostname "jaeger:4318", which
+# resolves within the pod's own namespace. Jaeger itself lives in `monitoring`
+# with the rest of the observability stack, so an alias in `gochat` is what makes
+# the unqualified name work.
+#
+# The alternative was a Kubernetes-specific TOML with a fully qualified endpoint.
+# One four-line Service is a smaller price than a second copy of the
+# configuration that then has to be kept in step with the first.
+#
+# It lives in base rather than with the Jaeger deployment because everything in
+# the gochat namespace is created by base - and an ExternalName that points at a
+# Jaeger which is not installed simply does not resolve, which is the same
+# outcome as not having tracing.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  namespace: gochat
+  labels:
+    app: jaeger
+spec:
+  type: ExternalName
+  externalName: jaeger.monitoring.svc.cluster.local

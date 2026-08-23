@@ -50,6 +50,12 @@ func (c *Chat) Start() (lifecycle.Stopper, error) {
 		c.tracerShutdown = shutdown
 	}
 
+	//init metrics server. api serves /metrics, /health and /ready on the same
+	//port every other role uses, so that probes and scraping do not have to be
+	//special-cased for it. Non-blocking: it runs the listener in a goroutine.
+	registerHealthChecks()
+	metrics.StartMetricsServer(9095)
+
 	//init rpc client
 	rpc.InitLogicRpcClient()
 

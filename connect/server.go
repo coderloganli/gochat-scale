@@ -103,6 +103,7 @@ func (s *Server) readPump(ch *Channel, c *Connect) {
 		// loop returned" — otherwise WaitEmpty releases while the DisConnect
 		// RPCs below are still in flight and the process exits before they land.
 		defer s.Registry.Remove(ch)
+		connectionClosed(serviceWebsocket, connTypeWebsocket)
 
 		close(ch.done)
 		if ch.Room == nil || ch.userId == 0 {

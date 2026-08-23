@@ -21,7 +21,7 @@ const registryPollInterval = 20 * time.Millisecond
 // authenticated belongs to no bucket. Draining from the buckets would skip
 // exactly the connections most likely to be present during a restart, when
 // clients are reconnecting. See
-// docs/adr/0010-a-departing-connect-instance-deregisters-before-it-closes-connections.md.
+// docs/adr/0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md.
 //
 // It is sharded so that accept and disconnect do not contend on one lock at ten
 // thousand connections.

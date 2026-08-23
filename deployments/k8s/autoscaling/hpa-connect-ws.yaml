@@ -1,0 +1,54 @@
+# connect-ws scales on connections held, not CPU.
+#
+# A WebSocket server's cost is the connections it holds. It can sit at single
+# digit CPU with every connection slot spoken for - the code says so itself, with
+# a hardcoded maxConnections = 10000 in connect/websocket.go that has nothing to
+# do with CPU. Scaling this on CPU means scaling on the wrong axis: the
+# autoscaler stays asleep until well past the point where clients start being
+# refused, and the symptom is rejected connections rather than a busy graph.
+#
+# See docs/adr/0012.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: connect-ws
+  namespace: gochat
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: connect-ws
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: gochat_connections_active
+        target:
+          type: AverageValue
+          # A guess, not a measurement. Picked to be demonstrable on a
+          # single-node kind cluster; docs/benchmarks.md has real capacity
+          # numbers for Compose and nothing equivalent has been run here.
+          averageValue: "200"
+  behavior:
+    # Up: immediately. There is no hazard in having spare connection capacity.
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+      selectPolicy: Max
+    # Down: slowly, and this is the half that is specific to connections.
+    # Removing a pod kills live WebSocket sessions; every one of those clients
+    # reconnects onto the remaining pods, so a scale-down at the wrong moment
+    # raises load on exactly the pods that were already carrying it. A five
+    # minute window and one pod per minute make that oscillation impossible.
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min

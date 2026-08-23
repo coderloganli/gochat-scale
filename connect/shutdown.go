@@ -50,7 +50,7 @@ const (
 // here; refuse new connections before closing the old ones, or the drain never
 // converges.
 //
-// See docs/adr/0010-a-departing-connect-instance-deregisters-before-it-closes-connections.md.
+// See docs/adr/0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md.
 func (c *Connect) Stop(ctx context.Context) error {
 	start := time.Now()
 	role := c.roleName()

@@ -1,0 +1,98 @@
+# site - serves the prebuilt frontend bundle.
+#
+# It registers no readiness checks of its own, so its /ready is equivalent to
+# /health. That is honest: once its listener is up there is nothing else it needs
+# in order to serve a static file.
+#
+# It does still wait for etcd in an init container, for a reason that has nothing
+# to do with serving files - see the comment below.
+apiVersion: v1
+kind: Service
+metadata:
+  name: site
+  namespace: gochat
+  labels:
+    app: site
+spec:
+  selector:
+    app: site
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9096
+      targetPort: 9096
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site
+  namespace: gochat
+  labels:
+    app: site
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: site
+  template:
+    metadata:
+      labels:
+        app: site
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9096"
+    spec:
+      terminationGracePeriodSeconds: 30
+      # site serves static files and needs nothing of its own - but it still
+      # waits for etcd, because every role does whether it wants to or not.
+      # connect/server_tcp.go has a package-level init() that calls
+      # rpc.InitLogicRpcClient(), main.go imports gochat/connect for the module
+      # switch, and that client calls logrus.Fatalf if etcd is not reachable. So
+      # the site process exits on startup if etcd is not up yet.
+      initContainers:
+        - name: wait-for-deps
+          image: gochat:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until nc -z etcd 2379; do echo "waiting for etcd:2379"; sleep 2; done
+              echo "dependencies reachable"
+      containers:
+        - name: gochat
+          image: gochat:dev
+          imagePullPolicy: IfNotPresent
+          args: ["/app/gochat", "-module", "site"]
+          env:
+            - name: RUN_MODE
+              value: dev
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9096
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9096
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9096
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

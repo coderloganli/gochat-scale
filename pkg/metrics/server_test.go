@@ -29,17 +29,35 @@ func TestHealthIsOkBeforeDraining(t *testing.T) {
 	}
 }
 
-// Test case 10: /health after SetDraining() -> 503 with body draining.
-func TestHealthReportsDraining(t *testing.T) {
+// Test case 10, revised where this branch met the Kubernetes work on master.
+//
+// It originally asserted that /health returns 503 while draining. That was the
+// right call when /health was the only endpoint there was: something had to
+// carry the "stop sending me work" signal. master added /ready, and with both
+// present the signal belongs there, for two reasons.
+//
+// The first is that it otherwise does not work. The readiness probe in
+// deployments/k8s reads /ready, so a 503 on /health would not take the pod out
+// of the Service endpoints at all - the exact thing draining is for.
+//
+// The second is that it would do harm. The liveness probe reads /health, and a
+// failing liveness probe asks the kubelet to restart the container - in the
+// middle of the shutdown that is trying to close connections cleanly.
+func TestDrainingWithdrawsReadinessButNotLiveness(t *testing.T) {
 	SetDraining()
 
-	w := get(t, "/health")
-
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("/health while draining: got %d, want 503", w.Code)
+	if w := get(t, "/ready"); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/ready while draining: got %d, want 503 - a departing instance "+
+			"must leave the Service endpoints", w.Code)
 	}
-	if got := w.Body.String(); got != "draining" {
-		t.Fatalf("/health body while draining: got %q, want %q", got, "draining")
+
+	w := get(t, "/health")
+	if w.Code != http.StatusOK {
+		t.Fatalf("/health while draining: got %d, want 200 - a draining pod is "+
+			"alive and must not be restarted mid-shutdown", w.Code)
+	}
+	if got := w.Body.String(); got != "OK" {
+		t.Fatalf("/health body while draining: got %q, want %q", got, "OK")
 	}
 }
 

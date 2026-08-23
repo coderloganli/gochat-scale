@@ -1,0 +1,45 @@
+# Local cluster for the Kubernetes deployment. See docs/kubernetes.md.
+#
+# Single node, because nothing here is testing scheduling across nodes: what is
+# being tested is that replicas find each other and that autoscaling works.
+#
+# The node image is pinned by digest rather than by tag so that this file
+# describes one exact cluster. v1.34 matches the kubectl this was verified with,
+# which keeps client and server within the supported one-minor-version skew.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: gochat
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
+    # These host ports are the reason the UI works without an Ingress. The
+    # frontend in site/static/js is a prebuilt bundle committed to the repository
+    # with http://127.0.0.1:7070 and ws://127.0.0.1:7000/ws compiled into it, so
+    # the application is only usable when those exact ports answer on localhost.
+    # They are the same ports Compose publishes, which is also why the two
+    # deployments cannot run at the same time.
+    extraPortMappings:
+      - containerPort: 30080     # site
+        hostPort: 8080
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      - containerPort: 30070     # api
+        hostPort: 7070
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      - containerPort: 30000     # connect-ws
+        hostPort: 7000
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      - containerPort: 30300     # grafana
+        hostPort: 3000
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      - containerPort: 30909     # prometheus
+        hostPort: 19090
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      - containerPort: 30686     # jaeger UI
+        hostPort: 16686
+        listenAddress: "127.0.0.1"
+        protocol: TCP

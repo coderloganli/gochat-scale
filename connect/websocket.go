@@ -101,6 +101,11 @@ func (c *Connect) serveWs(server *Server, w http.ResponseWriter, r *http.Request
 	// authenticated yet — and therefore belongs to no bucket — is still
 	// something shutdown can find and close.
 	server.Registry.Add(ch)
+	// Paired with the decrement in readPump's defer, which is also where the
+	// registry entry is removed - the gauge and the registry now describe the
+	// same set, and the admission check above reads that set directly rather
+	// than a counter kept alongside it.
+	connectionOpened(serviceWebsocket, connTypeWebsocket)
 	go server.writePump(ch, c)
 	go server.readPump(ch, c)
 }

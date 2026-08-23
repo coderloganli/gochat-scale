@@ -187,5 +187,5 @@ extra correctness.
   so a shutdown that is quietly hitting the cap is visible rather than inferred.
 - See [0002](./0002-services-find-each-other-through-etcd.md) for the registration
   this deregisters from, and
-  [0011](./0011-every-module-stops-through-one-lifecycle-helper.md) for the
+  [0015](./0015-every-module-stops-through-one-lifecycle-helper.md) for the
   mechanism that delivers the signal.

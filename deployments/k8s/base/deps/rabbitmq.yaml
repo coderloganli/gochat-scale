@@ -1,0 +1,95 @@
+# RabbitMQ carries messages from logic to task (docs/adr/0003).
+#
+# No definitions.json is mounted, unlike docker-compose.yml. The exchange and the
+# three queues are declared by the application at startup - logic/publish.go
+# declares the exchange, task/queue.go declares and binds the queues - so the
+# definitions file in deployments/rabbitmq is not load-bearing for topology.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: gochat
+  labels:
+    app: rabbitmq
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: management
+      port: 15672
+      targetPort: 15672
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: gochat
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.12-management-alpine
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: gochat
+            - name: RABBITMQ_DEFAULT_VHOST
+              value: gochat
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: gochat-credentials
+                  key: RABBITMQ_PASSWORD
+          ports:
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+          # rabbitmq-diagnostics is an Erlang CLI that has to attach to the node,
+          # and it routinely takes several seconds. Kubernetes defaults
+          # timeoutSeconds to 1, which fails every probe and - through the
+          # liveness probe - restarts a RabbitMQ that is working perfectly well.
+          # Compose hides this by allowing its healthchecks 5s.
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

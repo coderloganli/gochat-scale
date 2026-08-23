@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"gochat/config"
@@ -57,6 +58,12 @@ func (logic *Logic) Start() (lifecycle.Stopper, error) {
 	} else {
 		logic.tracerShutdown = shutdown
 	}
+
+	//declare what this process must be able to do before it is ready. Registered
+	//before the listener starts: an empty registry reports ready, so a probe that
+	//arrives in the startup window would otherwise get a 200 from a service that
+	//has not connected to anything yet.
+	registerHealthChecks(len(strings.Split(logicConfig.LogicBase.RpcAddress, ",")))
 
 	//init metrics server
 	logic.metricsSrv = metrics.StartMetricsServer(9091)

@@ -56,6 +56,17 @@ func Admission(serviceName string, opts AdmissionOptions) gin.HandlerFunc {
 	logrus.Infof("admission control enabled: maxInFlight=%d acquireTimeout=%s",
 		opts.MaxInFlight, opts.AcquireTimeout)
 
+	// Create both series now, at zero, rather than on the first request.
+	//
+	// A GaugeVec with no observed label values exports nothing at all, and "no
+	// series" is not the same as "zero" to anything reading the metric: an idle
+	// api pod would be absent from custom.metrics.k8s.io entirely, and its
+	// HorizontalPodAutoscaler would read <unknown> until the first request
+	// happened to arrive. An autoscaler that only works once there is load is of
+	// no use for deciding whether there is load.
+	metrics.AdmissionInFlight.WithLabelValues(serviceName).Set(0)
+	metrics.AdmissionShedTotal.WithLabelValues(serviceName).Add(0)
+
 	slots := make(chan struct{}, opts.MaxInFlight)
 
 	return func(c *gin.Context) {

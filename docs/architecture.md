@@ -134,6 +134,26 @@ which is the difference between a restart that costs a two-minute routing hole
 and one that costs a reconnect. `GOCHAT_GRACEFUL_SHUTDOWN=false` restores the old
 hard-kill behaviour and exists only to produce the control arm of the measurement
 in `docs/benchmarks.md`.
+## Deployment targets
+
+There are two, and neither is a staging post on the way to the other.
+
+**Docker Compose** (`docker-compose.yml` plus overlays in `deployments/`) is the
+one the development loop, the CI integration tests and the load tests run on. It
+starts fastest and it is where every number in `docs/benchmarks.md` came from.
+
+**Kubernetes** (`deployments/k8s/`, Kustomize, on a local kind cluster) is where
+the questions Compose cannot ask get answered: what readiness is worth when a
+dependency fails, and which signal an autoscaler should watch. See
+`docs/kubernetes.md`.
+
+The same image and the same configuration mechanism serve both; only the way
+they are scheduled differs. Both bind the same host ports, so only one can run at
+a time.
+
+Two things behave differently by necessity rather than by choice, each with a
+decision record: Prometheus discovers pods under Kubernetes and reads a static
+list under Compose (ADR 0013), and only Kubernetes autoscales (ADR 0012).
 
 ## Known gaps
 
@@ -147,12 +167,32 @@ Recorded here because they are structural, not bugs to be fixed in passing:
 - **Shutdown does not drain queued messages.** A message already sitting in a
   channel's `broadcast` buffer when the signal arrives may not be written. The
   five second cap covers the close handshake only — see
-  `docs/adr/0010-a-departing-connect-instance-deregisters-before-it-closes-connections.md`.
+  `docs/adr/0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md`.
 - **The bundled frontend does not reconnect.** connect now sends a 1001 close
   frame so a client can tell a planned shutdown from a failure, but `site/` is a
   prebuilt bundle with no source here and does not act on it.
-- **Prometheus scrapes logic through a static target**, so with several logic
-  replicas its logic metrics describe whichever replica DNS resolves to.
+- **`task` leaks an rpcx client per connect registration, every watch event.**
+  `setInstanceMap` (`task/rpc.go`) replaces the whole `serverId -> instances` map
+  with freshly built clients and never closes the ones it drops, so each client's
+  connection and heartbeat goroutine is abandoned. Registrations refresh on a
+  one-minute interval (ADR 0002), so this accrues for the life of the process.
+  Fixing it needs care rather than effort: a push may be in flight on a client at
+  the moment it is replaced, so they have to be closed after a grace period
+  rather than immediately.
+- **Every role hard-depends on etcd at process start, whether it uses it or
+  not.** `connect/server_tcp.go` has a package-level `init()` calling
+  `rpc.InitLogicRpcClient()`, and `main.go` imports `gochat/connect` so that one
+  binary can be any role — so that `init()` runs in all six. It calls
+  `logrus.Fatalf` when etcd is unreachable, which is why `site`, which serves
+  static files and talks to nothing, exits on startup if etcd is not up. Both
+  deployments work around it rather than fix it: Compose with `depends_on`,
+  Kubernetes with an init container. The real problem is network I/O in a package
+  `init()`.
+- **Under Compose, Prometheus scrapes logic through a static target**, so with
+  several logic replicas its logic metrics describe whichever replica DNS
+  resolves to. Compose has no discovery mechanism to fix this with. The
+  Kubernetes deployment does not have the gap — it discovers pods and labels
+  every series with its pod (ADR 0013).
 
 ## Where decisions live
 

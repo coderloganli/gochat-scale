@@ -1,0 +1,104 @@
+# connect-tcp - the same connection machinery over raw TCP.
+#
+# Deployed and probed, but this task does not exercise the TCP client path end to
+# end and makes no claim that it works under Kubernetes. No autoscaler: one
+# autoscaler per argument, and connect-ws already makes the connections-not-CPU
+# argument.
+apiVersion: v1
+kind: Service
+metadata:
+  name: connect-tcp
+  namespace: gochat
+  labels:
+    app: connect-tcp
+spec:
+  selector:
+    app: connect-tcp
+  ports:
+    - name: tcp
+      port: 7001
+      targetPort: 7001
+    - name: tcp-2
+      port: 7002
+      targetPort: 7002
+    - name: metrics
+      port: 9093
+      targetPort: 9093
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: connect-tcp
+  namespace: gochat
+  labels:
+    app: connect-tcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: connect-tcp
+  template:
+    metadata:
+      labels:
+        app: connect-tcp
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+    spec:
+      terminationGracePeriodSeconds: 30
+      # Kubernetes has no depends_on. logic and task panic if they cannot reach
+      # their dependencies at startup, so without this they crash-loop until the
+      # dependency appears - which works, but the backoff reaches five minutes and
+      # makes "one command brings it up" a lie. Waiting here costs a few seconds
+      # on a cold cluster and nothing on a warm one.
+      initContainers:
+        - name: wait-for-deps
+          image: gochat:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until nc -z etcd 2379; do echo "waiting for etcd:2379"; sleep 2; done
+              echo "dependencies reachable"
+      containers:
+        - name: gochat
+          image: gochat:dev
+          imagePullPolicy: IfNotPresent
+          args: ["/app/gochat", "-module", "connect_tcp"]
+          env:
+            - name: RUN_MODE
+              value: dev
+          ports:
+            - name: tcp
+              containerPort: 7001
+            - name: tcp-2
+              containerPort: 7002
+            - name: rpc
+              containerPort: 6914
+            - name: rpc-2
+              containerPort: 6915
+            - name: metrics
+              containerPort: 9093
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9093
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9093
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

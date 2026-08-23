@@ -12,6 +12,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"runtime"
+	"strings"
 	"time"
 
 	rpcxserver "github.com/smallnest/rpcx/server"
@@ -72,8 +73,15 @@ func (c *Connect) Start() (lifecycle.Stopper, error) {
 		c.tracerShutdown = shutdown
 	}
 
+	//declare what this process must be able to do before it is ready, before the
+	//listener starts: an empty registry reports ready
+	registerHealthChecks(len(strings.Split(config.Conf.Connect.ConnectRpcAddressWebSockts.Address, ",")))
+
 	//init metrics server
 	c.metricsSrv = metrics.StartMetricsServer(9092)
+	//export the connection gauge from the start, so an idle pod reports zero
+	//rather than reporting nothing - the autoscaler cannot tell those apart
+	initConnectionMetrics(serviceWebsocket, connTypeWebsocket)
 
 	//init logic layer rpc client, call logic layer rpc server
 	if err := c.InitLogicRpcClient(); err != nil {
@@ -82,6 +90,7 @@ func (c *Connect) Start() (lifecycle.Stopper, error) {
 	//init Connect layer rpc server, logic client will call this
 	c.server = newConnectServer(connectConfig)
 	DefaultServer = c.server
+	bucketsReady()
 	c.ServerId = fmt.Sprintf("%s-%s", "ws", uuid.New().String())
 	//init Connect layer rpc server ,task layer will call this
 	if err := c.InitConnectWebsocketRpcServer(); err != nil {
@@ -120,8 +129,11 @@ func (c *Connect) StartTcp() (lifecycle.Stopper, error) {
 		c.tracerShutdown = shutdown
 	}
 
+	registerHealthChecks(len(strings.Split(config.Conf.Connect.ConnectRpcAddressTcp.Address, ",")))
+
 	//init metrics server
 	c.metricsSrv = metrics.StartMetricsServer(9093)
+	initConnectionMetrics(serviceTcp, connTypeTcp)
 
 	//init logic layer rpc client, call logic layer rpc server
 	if err := c.InitLogicRpcClient(); err != nil {
@@ -130,6 +142,7 @@ func (c *Connect) StartTcp() (lifecycle.Stopper, error) {
 	//init Connect layer rpc server, logic client will call this
 	c.server = newConnectServer(connectConfig)
 	DefaultServer = c.server
+	bucketsReady()
 	c.ServerId = fmt.Sprintf("%s-%s", "tcp", uuid.New().String())
 	//init Connect layer rpc server ,task layer will call this
 	if err := c.InitConnectTcpRpcServer(); err != nil {

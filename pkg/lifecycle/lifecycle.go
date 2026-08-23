@@ -18,7 +18,7 @@ import (
 // ShutdownTimeout caps a whole shutdown. It is a constant by decision, not a
 // configuration key: nothing measures what it should be, so a knob would only
 // invite a number chosen without evidence. See
-// docs/adr/0010-a-departing-connect-instance-deregisters-before-it-closes-connections.md.
+// docs/adr/0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md.
 const ShutdownTimeout = 5 * time.Second
 
 // GracefulEnv switches graceful shutdown off, restoring the behaviour of a

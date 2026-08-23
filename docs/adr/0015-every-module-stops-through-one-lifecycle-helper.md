@@ -15,7 +15,7 @@ different defect.
   `signal.Notify` in `main.go` was the one that ran.
 - `connect.Run()` blocked in `ListenAndServe` and never returned, so `main.go`'s
   signal handling was unreachable for it — the defect
-  [0010](./0010-a-departing-connect-instance-deregisters-before-it-closes-connections.md)
+  [0014](./0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md)
   is about.
 - `site.Run()` ended in `logrus.Fatal(http.ListenAndServe(...))`.
 

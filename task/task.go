@@ -50,6 +50,10 @@ func (task *Task) Start() (lifecycle.Stopper, error) {
 		task.tracerShutdown = shutdown
 	}
 
+	//declare what this process must be able to do before it is ready, before the
+	//listener starts: an empty registry reports ready
+	registerHealthChecks()
+
 	//init metrics server
 	task.metricsSrv = metrics.StartMetricsServer(9094)
 

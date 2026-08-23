@@ -22,9 +22,12 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies. curl is here for the compose healthcheck, which
+# probes /ready over HTTP; under Kubernetes the kubelet makes that request itself
+# and nothing in the image is involved.
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     netcat-openbsd \
     procps \
     && rm -rf /var/lib/apt/lists/*

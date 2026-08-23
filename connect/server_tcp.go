@@ -108,6 +108,7 @@ func (c *Connect) acceptTcp(listener *net.TCPListener) {
 
 func (c *Connect) ServeTcp(server *Server, conn *net.TCPConn, r int) {
 	var ch *Channel
+	connectionOpened(serviceTcp, connTypeTcp)
 	ch = NewChannel(server.Options.BroadcastSize)
 	ch.connTcp = conn
 	// Registered before the read loop starts, for the same reason as the
@@ -122,6 +123,7 @@ func (c *Connect) readDataFromTcp(s *Server, ch *Channel) {
 	defer func() {
 		// Removed last; see the note in server.go's readPump.
 		defer s.Registry.Remove(ch)
+		connectionClosed(serviceTcp, connTypeTcp)
 
 		close(ch.done)
 		logrus.Infof("start exec disConnect ...")
