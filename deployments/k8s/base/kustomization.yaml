@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The application and its four dependencies. Mirrors docker-compose.yml; the dev
+# overlay in ../overlays/dev mirrors deployments/docker-compose.dev.yml.
+namespace: gochat
+
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - deps/etcd.yaml
+  - deps/redis.yaml
+  - deps/postgres.yaml
+  - deps/rabbitmq.yaml
+  - deps/jaeger-alias.yaml
+  - app/logic.yaml
+  - app/connect-ws.yaml
+  - app/connect-tcp.yaml
+  - app/task.yaml
+  - app/api.yaml
+  - app/site.yaml
+
+configMapGenerator:
+  # Generated from the real migration files rather than copied, so the schema
+  # cannot drift between the two deployments. Reading a file outside the
+  # kustomization root needs --load-restrictor LoadRestrictionsNone, which is why
+  # the Makefile renders with `kubectl kustomize` and pipes into apply rather
+  # than using `kubectl apply -k`: the flag does not exist on apply.
+  - name: postgres-migrations
+    files:
+      - ../../../db/migrations/0001_init.sql
+
+generatorOptions:
+  # A hash suffix would make the StatefulSet roll on every change, which for the
+  # init scripts is pointless: they only run when the volume is first created.
+  disableNameSuffixHash: true

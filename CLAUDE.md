@@ -42,10 +42,26 @@ Measured results and bottleneck analysis: `docs/benchmarks.md`. Tracked
 evidence lives in `loadtest/reports/*-steps.json`; do not quote a figure
 that no tracked file backs.
 
+### Kubernetes (local kind cluster)
+```bash
+make k8s-cluster-up           # create the kind cluster from the committed config
+make k8s-up                   # build+load the image, deploy everything, wait for rollouts
+make k8s-status               # pods, services and autoscalers
+make k8s-hpa                  # watch the autoscalers
+make k8s-down                 # remove the workloads, keep the cluster
+make k8s-cluster-down         # remove the cluster
+```
+
+The second deployment target; see `docs/kubernetes.md`. Compose stays the one the
+development loop, the CI integration tests and the load tests use. Both bind the
+same host ports, and the kind node holds them for its whole lifetime, so only one
+can run at a time - `docker stop gochat-control-plane` frees them without
+destroying the cluster.
+
 ### Building
 ```bash
 make build-binary             # Build Linux binary to bin/gochat
-make build-image              # Build Docker image
+make build-image              # Build Docker image (TAG=dev for the k8s tag)
 ```
 
 ## Architecture
@@ -134,9 +150,38 @@ Overlays: `deployments/docker-compose.{dev,prod,test}.yml`
 
 Scale services: `docker compose up --scale logic=3 --scale connect-ws=2`
 
+`make compose-dev` does not rebuild. The healthchecks now curl `/ready`, and
+`curl` was only added to the runtime image recently, so a stale local image fails
+every healthcheck with no obvious cause. Use `make compose-dev-build` after
+pulling changes that touch `docker/Dockerfile`.
+
+## Health and readiness
+
+Every role serves three endpoints on its metrics port (9091-9096):
+
+- `/metrics` - Prometheus.
+- `/health` - liveness. Returns 200 unconditionally, on purpose. A dependency
+  being down is not a reason to restart a process, and a liveness probe that
+  checks dependencies turns an outage into a cluster-wide restart loop.
+- `/ready` - readiness. Runs the checks that role actually needs and returns 503
+  naming what failed. Registered through `pkg/health`.
+
+The two answer different questions and must not be conflated; see
+`docs/adr/0011`. Compose healthchecks and Kubernetes readiness probes both use
+`/ready`, so the two deployments agree on what "ready" means.
+
 ## Metrics
 
 All services expose Prometheus metrics. Scraped by Prometheus, visualized in Grafana dashboards at `deployments/grafana/`.
+
+Under Compose, Prometheus reads a static target list. Under Kubernetes it
+discovers pods by annotation, which is what gives every series a `pod` label -
+and that label is what lets prometheus-adapter serve `custom.metrics.k8s.io` for
+the autoscalers (`docs/adr/0012`, `docs/adr/0013`).
+
+A declared metric is not an exported one: a `GaugeVec` with no observed label
+values exports no series at all. `gochat_connections_active` was declared for a
+long time with no writer, which is invisible until something tries to read it.
 
 ## Documentation
 
@@ -146,6 +191,8 @@ All services expose Prometheus metrics. Scraped by Prometheus, visualized in Gra
   known structural gaps.
 - `docs/adr/` - one decision per file. Search it rather than reading it.
 - `docs/benchmarks.md` - measured capacity and bottleneck analysis.
+- `docs/kubernetes.md` - the Kubernetes deployment: how to run it, and what is
+  deliberately not production-grade.
 
 When a decision changes, edit its record in place rather than adding a new one.
 

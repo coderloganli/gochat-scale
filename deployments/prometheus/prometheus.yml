@@ -8,7 +8,7 @@ global:
 scrape_configs:
   - job_name: 'gochat-api'
     static_configs:
-      - targets: ['api:7070']
+      - targets: ['api:9095']
         labels:
           service: 'api'
     metrics_path: '/metrics'
@@ -44,7 +44,7 @@ scrape_configs:
 
   - job_name: 'gochat-site'
     static_configs:
-      - targets: ['site:8080']
+      - targets: ['site:9096']
         labels:
           service: 'site'
     metrics_path: '/metrics'

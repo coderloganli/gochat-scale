@@ -7,9 +7,9 @@ package site
 
 import (
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"gochat/config"
+	"gochat/pkg/metrics"
 	"net/http"
 	"os"
 	"path"
@@ -47,9 +47,12 @@ func (s *Site) Run() {
 	port := siteConfig.SiteBase.ListenPort
 	addr := fmt.Sprintf(":%d", port)
 
-	// Create a mux to handle both static files and metrics
+	// Metrics, liveness and readiness live on the shared metrics port, the same
+	// as every other role, rather than being mixed in with the static file
+	// server. Non-blocking.
+	metrics.StartMetricsServer(9096)
+
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
 	mux.Handle("/", server(http.Dir("./site")))
 
 	logrus.Infof("Site server starting on %s", addr)

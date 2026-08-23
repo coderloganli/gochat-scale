@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The observability stack, in its own namespace so that the application namespace
+# can be torn down and recreated without taking the metrics pipeline with it.
+#
+# prometheus-adapter lives here too: it reads from Prometheus, and it is the
+# bridge between a Prometheus series and a HorizontalPodAutoscaler.
+
+resources:
+  - namespace.yaml
+  - prometheus/rbac.yaml
+  - prometheus/configmap.yaml
+  - prometheus/deployment.yaml
+  - grafana/deployment.yaml
+  - jaeger/deployment.yaml
+  - prometheus-adapter/rbac.yaml
+  - prometheus-adapter/config.yaml
+  - prometheus-adapter/deployment.yaml
+
+configMapGenerator:
+  # Generated from the files the Compose deployment already uses, so both
+  # deployments show the same dashboards from one copy in the repository.
+  - name: grafana-datasources
+    namespace: monitoring
+    files:
+      - ../../grafana/provisioning/datasources/datasource.yml
+  - name: grafana-dashboard-provider
+    namespace: monitoring
+    files:
+      - ../../grafana/provisioning/dashboards/dashboards.yml
+  - name: grafana-dashboards
+    namespace: monitoring
+    files:
+      - ../../grafana/dashboards/gochat-overview.json
+      - ../../grafana/dashboards/gochat-standard.json
+      - ../../grafana/dashboards/gochat-troubleshooting.json
+
+generatorOptions:
+  disableNameSuffixHash: true

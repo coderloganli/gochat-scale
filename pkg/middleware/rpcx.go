@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -29,12 +30,25 @@ type (
 	rpcxMethodKey struct{}
 )
 
-// sanitizeMethodName ensures the method name is valid UTF-8
+// sanitizeMethodName returns a method name that is safe to keep as a Prometheus
+// label: valid UTF-8, and backed by memory nobody else will overwrite.
+//
+// The copy is the important half. rpcx decodes the method name as a zero-copy
+// alias into the request's data buffer (protocol.Message.Decode uses
+// util.SliceByteToString, which is an unsafe cast, not a copy), and that buffer
+// is pooled and reused - the server hands the message back with
+// protocol.FreeMsg. Keeping the string as a label value therefore keeps a
+// pointer into memory that the next request rewrites, so a label validated as
+// UTF-8 here silently turns into some later request's bytes.
+//
+// The symptom is not a wrong label, it is a dead endpoint: the registry ends up
+// with invalid UTF-8 label values and with two children whose labels have become
+// equal, gathering fails, and /metrics answers HTTP 500 for the whole process.
 func sanitizeMethodName(name string) string {
-	if utf8.ValidString(name) {
-		return name
+	if !utf8.ValidString(name) {
+		return "unknown"
 	}
-	return "unknown"
+	return strings.Clone(name)
 }
 
 func NewPrometheusRPCPlugin(serviceName string) *PrometheusRPCPlugin {

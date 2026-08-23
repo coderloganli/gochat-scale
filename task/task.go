@@ -45,6 +45,10 @@ func (task *Task) Run() {
 		}()
 	}
 
+	//declare what this process must be able to do before it is ready, before the
+	//listener starts: an empty registry reports ready
+	registerHealthChecks()
+
 	//init metrics server
 	metrics.StartMetricsServer(9094)
 

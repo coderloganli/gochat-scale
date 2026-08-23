@@ -2,10 +2,13 @@ package metrics
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"time"
+
+	"gochat/pkg/health"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
@@ -15,10 +18,19 @@ import (
 func StartMetricsServer(port int) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+
+	// Liveness. Deliberately unconditional: it answers "is this process wedged",
+	// and a dependency being down is not a reason to restart anything. Checking
+	// dependencies here is how a database outage becomes a cluster-wide crash
+	// loop. See docs/adr/0011.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+
+	// Readiness. Answers "should I be sent traffic", which is a different
+	// question, and the only one that consults the registered checks.
+	mux.HandleFunc("/ready", readyHandler)
 
 	// Register pprof endpoints for profiling
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -46,6 +58,34 @@ func StartMetricsServer(port int) *http.Server {
 	}()
 
 	return srv
+}
+
+// readyCheckTimeout bounds the whole set of readiness checks. A check that
+// hangs must not hang the probe: kubelet would see a timeout rather than a 503,
+// which reports the same thing far less clearly.
+const readyCheckTimeout = 2 * time.Second
+
+func readyHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), readyCheckTimeout)
+	defer cancel()
+
+	ok, failures := health.Run(ctx)
+
+	w.Header().Set("Content-Type", "application/json")
+	if ok {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{"status": "ready"})
+		return
+	}
+
+	// 503 rather than 500: the service is not broken, it is not usable yet. The
+	// failing check names are in the body because "not ready" on its own sends
+	// whoever is debugging it to the logs of every dependency in turn.
+	w.WriteHeader(http.StatusServiceUnavailable)
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":   "not ready",
+		"failures": failures,
+	})
 }
 
 // ShutdownMetricsServer gracefully shuts down the metrics server

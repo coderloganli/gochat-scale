@@ -85,7 +85,10 @@ func (logic *Logic) createRpcServer(network string, addr string) {
 	err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathLogic, new(RpcLogic), fmt.Sprintf("%s", logic.ServerId))
 	if err != nil {
 		logrus.Errorf("register error:%s", err.Error())
+		return
 	}
+	// Registered in etcd, so api and connect can now discover this address.
+	etcdRegistered()
 	s.RegisterOnShutdown(func(s *server.Server) {
 		s.UnregisterAll()
 	})

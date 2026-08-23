@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    # Kubernetes Prometheus configuration. See docs/adr/0013 for why this
+    # discovers pods instead of naming targets the way the Compose configuration
+    # in deployments/prometheus/prometheus.yml does.
+    #
+    # The short version: a static target scrapes one replica out of N, and the
+    # per-pod `namespace` and `pod` labels this produces are what lets
+    # prometheus-adapter attach a series to a Kubernetes object. Without them the
+    # custom metrics API has nothing to key on and every HPA reads <unknown>.
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'gochat'
+        environment: 'dev'
+
+    scrape_configs:
+      - job_name: 'gochat-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['gochat']
+        relabel_configs:
+          # Opt in per workload, declared next to the port it applies to.
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+
+          # Scrape the pod directly on its annotated metrics port. Deliberately
+          # role: pod rather than role: endpoints - endpoints would hide any pod
+          # that is failing readiness, which is exactly the pod worth looking at.
+          - source_labels:
+              - __meta_kubernetes_pod_ip
+              - __meta_kubernetes_pod_annotation_prometheus_io_port
+            action: replace
+            separator: ':'
+            regex: '(.+):(.+)'
+            replacement: '$1:$2'
+            target_label: __address__
+
+          # These two are the join key for the custom metrics API.
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+
+          # The existing Grafana dashboards group by `service` and filter on
+          # `job=~"gochat-.*"`, so both labels have to come out matching what the
+          # Compose deployment produces - otherwise the dashboards render empty
+          # here and the "they keep working" claim is false.
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: replace
+            target_label: service
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: replace
+            target_label: job
+            regex: (.+)
+            replacement: gochat-$1

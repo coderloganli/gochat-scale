@@ -92,6 +92,7 @@ func (s *Server) writePump(ch *Channel, c *Connect) {
 func (s *Server) readPump(ch *Channel, c *Connect) {
 	defer func() {
 		atomic.AddInt64(&activeConnections, -1)
+		connectionClosed(serviceWebsocket, connTypeWebsocket)
 		close(ch.done)
 		if ch.Room == nil || ch.userId == 0 {
 			logrus.Debugf("readPump closing: roomId or userId is 0")

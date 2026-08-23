@@ -22,7 +22,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
 
@@ -36,7 +35,6 @@ func Register() *gin.Engine {
 	if admission, ok := admissionMiddleware(); ok {
 		r.Use(admission)
 	}
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	initUserRouter(r)
 	initPushRouter(r)
 	r.NoRoute(func(c *gin.Context) {

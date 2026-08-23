@@ -1,0 +1,92 @@
+# task - consumes RabbitMQ and delivers each message to the connect instance that
+# holds the recipient.
+apiVersion: v1
+kind: Service
+metadata:
+  name: task
+  namespace: gochat
+  labels:
+    app: task
+spec:
+  selector:
+    app: task
+  ports:
+    - name: metrics
+      port: 9094
+      targetPort: 9094
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task
+  namespace: gochat
+  labels:
+    app: task
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: task
+  template:
+    metadata:
+      labels:
+        app: task
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9094"
+    spec:
+      terminationGracePeriodSeconds: 30
+      # Kubernetes has no depends_on. logic and task panic if they cannot reach
+      # their dependencies at startup, so without this they crash-loop until the
+      # dependency appears - which works, but the backoff reaches five minutes and
+      # makes "one command brings it up" a lie. Waiting here costs a few seconds
+      # on a cold cluster and nothing on a warm one.
+      initContainers:
+        - name: wait-for-deps
+          image: gochat:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until nc -z etcd 2379; do echo "waiting for etcd:2379"; sleep 2; done
+              until nc -z rabbitmq 5672; do echo "waiting for rabbitmq:5672"; sleep 2; done
+              echo "dependencies reachable"
+      containers:
+        - name: gochat
+          image: gochat:dev
+          imagePullPolicy: IfNotPresent
+          args: ["/app/gochat", "-module", "task"]
+          env:
+            - name: RUN_MODE
+              value: dev
+          ports:
+            - name: rpc
+              containerPort: 6923
+            - name: metrics
+              containerPort: 9094
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9094
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Ready means it can consume AND deliver: a RabbitMQ channel plus at
+          # least one discovered connect instance. Without the second, task
+          # consumes messages and drops them silently.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9094
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

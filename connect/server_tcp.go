@@ -91,6 +91,7 @@ func (c *Connect) acceptTcp(listener *net.TCPListener) {
 
 func (c *Connect) ServeTcp(server *Server, conn *net.TCPConn, r int) {
 	var ch *Channel
+	connectionOpened(serviceTcp, connTypeTcp)
 	ch = NewChannel(server.Options.BroadcastSize)
 	ch.connTcp = conn
 	go c.writeDataToTcp(server, ch)
@@ -99,6 +100,7 @@ func (c *Connect) ServeTcp(server *Server, conn *net.TCPConn, r int) {
 
 func (c *Connect) readDataFromTcp(s *Server, ch *Channel) {
 	defer func() {
+		connectionClosed(serviceTcp, connTypeTcp)
 		close(ch.done)
 		logrus.Infof("start exec disConnect ...")
 		if ch.Room == nil || ch.userId == 0 {
