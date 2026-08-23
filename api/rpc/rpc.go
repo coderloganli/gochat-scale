@@ -26,6 +26,10 @@ import (
 var LogicRpcClient client.XClient
 var once sync.Once
 
+// LogicDiscovery is kept so readiness can ask whether any logic instance is
+// registered, rather than discovering it on the first user-facing call.
+var LogicDiscovery client.ServiceDiscovery
+
 type RpcLogic struct {
 }
 
@@ -52,6 +56,7 @@ func InitLogicRpcClient() {
 		if err != nil {
 			logrus.Fatalf("init connect rpc etcd discovery client fail:%s", err.Error())
 		}
+		LogicDiscovery = d
 		// Optimized client options for better connection reuse
 		opt := client.Option{
 			Retries:             3,

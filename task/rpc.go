@@ -120,64 +120,76 @@ func (task *Task) InitConnectRpcClient() (err error) {
 	if e != nil {
 		logrus.Fatalf("init task rpc etcd discovery client fail:%s", e.Error())
 	}
-	if len(d.GetServices()) <= 0 {
+	// Seed the instance map from what is already registered, before starting the
+	// watcher. Without this the map stays empty until the first watch event, and
+	// a task that has just started silently drops every message it consumes -
+	// and readiness would have nothing to report against either.
+	initial := d.GetServices()
+	if len(initial) <= 0 {
 		logrus.Debugf("no etcd server find!")
 	}
+	setInstanceMap(buildInstanceMap(initial))
 	// watch connect server change && update RpcConnectClientList
 	go task.watchServicesChange(d)
 	return
 }
 
-func (task *Task) watchServicesChange(d client.ServiceDiscovery) {
+// buildInstanceMap turns a set of connect registrations from etcd into the
+// serverId -> instances map that delivery looks up. Shared by the initial seed
+// and the watcher so that both produce the same thing from the same input.
+func buildInstanceMap(kvs []*client.KVPair) map[string][]Instance {
 	etcdConfig := config.Conf.Common.CommonEtcd
+	insMap := make(map[string][]Instance)
+	for _, kv := range kvs {
+		logrus.Debugf("connect service registration,key is:%s,value is:%s", kv.Key, kv.Value)
+		serverType := getParamByKey(kv.Value, "serverType")
+		serverId := getParamByKey(kv.Value, "serverId")
+		logrus.Debugf("serverType is:%s,serverId is:%s", serverType, serverId)
+		if serverType == "" || serverId == "" {
+			continue
+		}
+		d, e := client.NewPeer2PeerDiscovery(kv.Key, "")
+		if e != nil {
+			logrus.Errorf("init task client.NewPeer2PeerDiscovery watch client fail:%s", e.Error())
+			continue
+		}
+		// Optimized client options for better connection reuse
+		opt := client.Option{
+			Retries:             3,
+			ConnectTimeout:      500 * time.Millisecond,
+			IdleTimeout:         0,
+			Heartbeat:           true,
+			HeartbeatInterval:   10 * time.Second,
+			MaxWaitForHeartbeat: 30 * time.Second,
+			TCPKeepAlivePeriod:  30 * time.Second,
+			BackupLatency:       10 * time.Millisecond,
+			SerializeType:       protocol.MsgPack,
+			CompressType:        protocol.None,
+		}
+		c := client.NewXClient(etcdConfig.ServerPathConnect, client.Failtry, client.RandomSelect, d, opt)
+		ins := Instance{
+			ServerType: serverType,
+			ServerId:   serverId,
+			Client:     c,
+		}
+		insMap[serverId] = append(insMap[serverId], ins)
+	}
+	return insMap
+}
+
+func setInstanceMap(insMap map[string][]Instance) {
+	RClient.lock.Lock()
+	RClient.ServerInsMap = insMap
+	RClient.lock.Unlock()
+}
+
+func (task *Task) watchServicesChange(d client.ServiceDiscovery) {
 	for kvChan := range d.WatchService() {
 		if len(kvChan) <= 0 {
 			logrus.Errorf("connect services change, connect alarm, no abailable ip")
 		}
 		logrus.Debugf("connect services change trigger...")
-		insMap := make(map[string][]Instance)
-		for _, kv := range kvChan {
-			logrus.Debugf("connect services change,key is:%s,value is:%s", kv.Key, kv.Value)
-			serverType := getParamByKey(kv.Value, "serverType")
-			serverId := getParamByKey(kv.Value, "serverId")
-			logrus.Debugf("serverType is:%s,serverId is:%s", serverType, serverId)
-			if serverType == "" || serverId == "" {
-				continue
-			}
-			d, e := client.NewPeer2PeerDiscovery(kv.Key, "")
-			if e != nil {
-				logrus.Errorf("init task client.NewPeer2PeerDiscovery watch client fail:%s", e.Error())
-				continue
-			}
-			// Optimized client options for better connection reuse
-			opt := client.Option{
-				Retries:             3,
-				ConnectTimeout:      500 * time.Millisecond,
-				IdleTimeout:         0,
-				Heartbeat:           true,
-				HeartbeatInterval:   10 * time.Second,
-				MaxWaitForHeartbeat: 30 * time.Second,
-				TCPKeepAlivePeriod:  30 * time.Second,
-				BackupLatency:       10 * time.Millisecond,
-				SerializeType:       protocol.MsgPack,
-				CompressType:        protocol.None,
-			}
-			c := client.NewXClient(etcdConfig.ServerPathConnect, client.Failtry, client.RandomSelect, d, opt)
-			ins := Instance{
-				ServerType: serverType,
-				ServerId:   serverId,
-				Client:     c,
-			}
-			if _, ok := insMap[serverId]; !ok {
-				insMap[serverId] = []Instance{ins}
-			} else {
-				insMap[serverId] = append(insMap[serverId], ins)
-			}
-		}
-		RClient.lock.Lock()
-		RClient.ServerInsMap = insMap
-		RClient.lock.Unlock()
-
+		setInstanceMap(buildInstanceMap(kvChan))
 	}
 }
 

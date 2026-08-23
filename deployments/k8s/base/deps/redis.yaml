@@ -1,0 +1,73 @@
+# Redis holds sessions, the userId -> serverId routing map, and room membership.
+#
+# The Service is named "redis" because config/dev/common.toml already says
+# redisAddress = "redis:6379". Every dependency here is named to match what the
+# configuration already expects, which is why the move to Kubernetes needs no
+# configuration change at all.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: gochat
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: gochat
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:5.0.9-alpine
+          args: ["redis-server", "--appendonly", "no"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          # The same checks docker-compose.yml uses. They are the right ones.
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

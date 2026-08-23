@@ -18,6 +18,7 @@ import (
 	"gochat/api/router"
 	"gochat/api/rpc"
 	"gochat/config"
+	"gochat/pkg/metrics"
 	"gochat/pkg/tracing"
 
 	"github.com/gin-gonic/gin"
@@ -49,6 +50,12 @@ func (c *Chat) Run() {
 			}
 		}()
 	}
+
+	//init metrics server. api serves /metrics, /health and /ready on the same
+	//port every other role uses, so that probes and scraping do not have to be
+	//special-cased for it. Non-blocking: it runs the listener in a goroutine.
+	registerHealthChecks()
+	metrics.StartMetricsServer(9095)
 
 	//init rpc client
 	rpc.InitLogicRpcClient()

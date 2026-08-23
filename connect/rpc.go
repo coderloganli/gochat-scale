@@ -53,6 +53,9 @@ func (c *Connect) InitLogicRpcClient() (err error) {
 		if e != nil {
 			logrus.Fatalf("init connect rpc etcd discovery client fail:%s", e.Error())
 		}
+		// Kept so the readiness check can ask whether any logic instance is
+		// actually registered, rather than finding out on the first call.
+		logicDiscovery = d
 		// Optimized client options for better connection reuse
 		opt := client.Option{
 			Retries:             3,
@@ -179,7 +182,12 @@ func (c *Connect) createConnectWebsocktsRpcServer(network string, addr string) {
 	addRegistryPlugin(s, network, addr)
 	//config.Conf.Connect.ConnectTcp.ServerId
 	//s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("%s", config.Conf.Connect.ConnectWebsocket.ServerId))
-	s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("serverId=%s&serverType=ws", c.ServerId))
+	if err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("serverId=%s&serverType=ws", c.ServerId)); err != nil {
+		logrus.Errorf("connect websocket rpc register error:%s", err.Error())
+		return
+	}
+	// Registration has happened, so this address is now resolvable by task.
+	etcdRegistered()
 	s.RegisterOnShutdown(func(s *server.Server) {
 		s.UnregisterAll()
 	})
@@ -190,7 +198,11 @@ func (c *Connect) createConnectTcpRpcServer(network string, addr string) {
 	s := server.NewServer()
 	addRegistryPlugin(s, network, addr)
 	//s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("%s", config.Conf.Connect.ConnectTcp.ServerId))
-	s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("serverId=%s&serverType=tcp", c.ServerId))
+	if err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("serverId=%s&serverType=tcp", c.ServerId)); err != nil {
+		logrus.Errorf("connect tcp rpc register error:%s", err.Error())
+		return
+	}
+	etcdRegistered()
 	s.RegisterOnShutdown(func(s *server.Server) {
 		s.UnregisterAll()
 	})

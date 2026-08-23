@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adapter-config
+  namespace: monitoring
+data:
+  config.yaml: |
+    # Rules turning two GoChat gauges into custom.metrics.k8s.io metrics.
+    #
+    # Only these two, because only these two drive an autoscaler. Exposing every
+    # series would make the API listing unreadable for no gain.
+    rules:
+      # The connect-ws signal. A WebSocket server runs out of connections long
+      # before it runs out of CPU - see docs/adr/0012.
+      #
+      # The sum matters: gochat_connections_active carries a `type` label
+      # (websocket/tcp), so without aggregating there is more than one series per
+      # pod and the adapter cannot decide which one the pod's value is.
+      - seriesQuery: '{__name__="gochat_connections_active",namespace!="",pod!=""}'
+        resources:
+          overrides:
+            namespace: {resource: "namespace"}
+            pod: {resource: "pod"}
+        name:
+          matches: "^gochat_connections_active$"
+          as: "gochat_connections_active"
+        metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+
+      # The api signal: requests holding an admission slot, compared against the
+      # limit in config/dev/api.toml. Scaling on this adds capacity before
+      # admission control starts refusing work (docs/adr/0009).
+      - seriesQuery: '{__name__="gochat_admission_in_flight",namespace!="",pod!=""}'
+        resources:
+          overrides:
+            namespace: {resource: "namespace"}
+            pod: {resource: "pod"}
+        name:
+          matches: "^gochat_admission_in_flight$"
+          as: "gochat_admission_in_flight"
+        metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'

@@ -1,0 +1,96 @@
+# etcd is the service registry. Every logic and connect instance registers itself
+# here, and api, connect and task discover through it (docs/adr/0002).
+#
+# This matters more under Kubernetes than it looks: task must reach one *named*
+# connect instance, the one holding the recipient's connection, which a Service
+# cannot express. Registration carries the pod IP, which is routable cluster-wide,
+# so the mechanism works unchanged.
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd
+  namespace: gochat
+  labels:
+    app: etcd
+spec:
+  selector:
+    app: etcd
+  ports:
+    - name: client
+      port: 2379
+      targetPort: 2379
+    - name: peer
+      port: 2380
+      targetPort: 2380
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etcd
+  namespace: gochat
+spec:
+  serviceName: etcd
+  replicas: 1
+  selector:
+    matchLabels:
+      app: etcd
+  template:
+    metadata:
+      labels:
+        app: etcd
+    spec:
+      containers:
+        - name: etcd
+          image: quay.io/coreos/etcd:v3.5.9
+          env:
+            - name: ETCD_NAME
+              value: default
+            - name: ETCD_DATA_DIR
+              value: /etcd-data
+            - name: ETCD_LISTEN_CLIENT_URLS
+              value: http://0.0.0.0:2379
+            - name: ETCD_ADVERTISE_CLIENT_URLS
+              value: http://etcd:2379
+            - name: ETCD_LISTEN_PEER_URLS
+              value: http://0.0.0.0:2380
+            - name: ETCD_INITIAL_ADVERTISE_PEER_URLS
+              value: http://etcd:2380
+            - name: ETCD_INITIAL_CLUSTER
+              value: default=http://etcd:2380
+            - name: ETCD_INITIAL_CLUSTER_STATE
+              value: new
+            - name: ETCD_INITIAL_CLUSTER_TOKEN
+              value: gochat-etcd-cluster
+          ports:
+            - name: client
+              containerPort: 2379
+            - name: peer
+              containerPort: 2380
+          readinessProbe:
+            exec:
+              command: ["etcdctl", "endpoint", "health"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["etcdctl", "endpoint", "health"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /etcd-data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

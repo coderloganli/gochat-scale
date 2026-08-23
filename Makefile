@@ -1,13 +1,26 @@
 
 
 .PHONY: build help compose-dev compose-dev-build compose-dev-down compose-prod compose-prod-build compose-prod-down compose-scale compose-logs compose-ps clean test-infra db-migrate db-shell test test-coverage test-unit test-integration fmt fmt-check vet lint build-binary build-image \
-	loadtest-help loadtest-setup loadtest-start loadtest-stop loadtest-full loadtest-capacity loadtest-login loadtest-register loadtest-logout loadtest-checkauth loadtest-websocket loadtest-push loadtest-pushroom loadtest-count loadtest-roominfo loadtest-smoke loadtest-custom loadtest-report loadtest-grafana loadtest-clean
+	k8s-cluster-up k8s-cluster-down k8s-image k8s-up k8s-down k8s-status k8s-hpa \n	loadtest-help loadtest-setup loadtest-start loadtest-stop loadtest-full loadtest-capacity loadtest-login loadtest-register loadtest-logout loadtest-checkauth loadtest-websocket loadtest-push loadtest-pushroom loadtest-count loadtest-roominfo loadtest-smoke loadtest-custom loadtest-report loadtest-grafana loadtest-clean
 
 # Default HOST_IP for development
 HOST_IP ?= 127.0.0.1
 
 # Replica count for load-test scale-out runs: make loadtest-capacity LOGIC_REPLICAS=3
 LOGIC_REPLICAS ?= 1
+
+# Image tag. The Kubernetes manifests name gochat:dev, so k8s-image overrides
+# this; nothing else should need to.
+IMAGE_TAG ?= latest
+
+# Kubernetes
+KIND_CLUSTER ?= gochat
+K8S_DIR      := deployments/k8s
+# Rendering rather than `kubectl apply -k`: the base kustomization generates the
+# postgres migrations ConfigMap from db/migrations, which is outside its root, and
+# only `kubectl kustomize` takes --load-restrictor.
+KUSTOMIZE     = kubectl kustomize --load-restrictor LoadRestrictionsNone
+METRICS_SERVER_URL := https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.0/components.yaml
 
 # Legacy build command (for backward compatibility)
 build: # make build TAG=1.23;make build TAG=latest,自定义版本号,构建自己机器可以运行的镜像(因为M1机器拉取提供的镜像架构不同,只能自己构建)
@@ -191,8 +204,86 @@ build-binary:
 
 build-image:
 	@echo "Building Docker image..."
-	docker build -t gochat:latest -f docker/Dockerfile .
-	@echo "Image built: gochat:latest"
+	docker build -t gochat:$(IMAGE_TAG) -f docker/Dockerfile .
+	@echo "Image built: gochat:$(IMAGE_TAG)"
+
+# ============================================
+# Kubernetes (local kind cluster)
+# ============================================
+# The second deployment target. Compose stays the one the development loop, the
+# CI integration tests and the load tests use; this is where readiness and
+# autoscaling are actually exercised. See docs/kubernetes.md.
+#
+# Both bind the same host ports, so only one can run at a time.
+
+k8s-cluster-up:
+	@echo "Creating kind cluster '$(KIND_CLUSTER)'..."
+	kind create cluster --name $(KIND_CLUSTER) --config $(K8S_DIR)/kind-cluster.yaml
+	@echo "Cluster ready."
+
+k8s-cluster-down:
+	kind delete cluster --name $(KIND_CLUSTER)
+
+k8s-image:
+	@$(MAKE) build-image IMAGE_TAG=dev
+	@echo "Loading gochat:dev into the cluster (no registry involved)..."
+	kind load docker-image gochat:dev --name $(KIND_CLUSTER)
+
+k8s-up: k8s-image
+	@echo "Installing metrics-server (CPU metrics, for comparison with the custom ones)..."
+	kubectl apply -f $(METRICS_SERVER_URL)
+	@# kubelet on kind serves a self-signed certificate with no IP SAN, so
+	@# scraping it by node IP fails validation. The clean fix is serverTLSBootstrap
+	@# plus manual CSR approval, which would stop this being one command.
+	kubectl -n kube-system patch deployment metrics-server --type=json 		-p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+	@echo "Applying the observability stack..."
+	$(KUSTOMIZE) $(K8S_DIR)/monitoring | kubectl apply -f -
+	@echo "Applying the application..."
+	$(KUSTOMIZE) $(K8S_DIR)/overlays/dev | kubectl apply -f -
+	@echo "Waiting for dependencies..."
+	kubectl -n gochat rollout status statefulset/etcd --timeout=180s
+	kubectl -n gochat rollout status statefulset/redis --timeout=180s
+	kubectl -n gochat rollout status statefulset/postgres --timeout=180s
+	kubectl -n gochat rollout status statefulset/rabbitmq --timeout=300s
+	@echo "Waiting for the application..."
+	kubectl -n gochat rollout status deployment/logic --timeout=180s
+	kubectl -n gochat rollout status deployment/connect-ws --timeout=180s
+	kubectl -n gochat rollout status deployment/connect-tcp --timeout=180s
+	kubectl -n gochat rollout status deployment/api --timeout=180s
+	kubectl -n gochat rollout status deployment/task --timeout=180s
+	kubectl -n gochat rollout status deployment/site --timeout=180s
+	@echo "Waiting for the metrics pipeline..."
+	kubectl -n monitoring rollout status deployment/prometheus --timeout=180s
+	kubectl -n monitoring rollout status deployment/prometheus-adapter --timeout=180s
+	kubectl -n monitoring rollout status deployment/grafana --timeout=180s
+	kubectl -n monitoring rollout status deployment/jaeger --timeout=180s
+	@# Applied last: an HPA whose metric nothing serves yet reads <unknown>.
+	@echo "Applying the autoscalers..."
+	kubectl apply -k $(K8S_DIR)/autoscaling
+	@echo ""
+	@echo "GoChat is up.  UI http://localhost:8080   Grafana http://localhost:3000 (admin/admin)"
+	@echo "Prometheus http://localhost:19090   Jaeger http://localhost:16686"
+	@echo "Watch the autoscaler with: make k8s-hpa"
+
+k8s-down:
+	-kubectl delete -k $(K8S_DIR)/autoscaling --ignore-not-found
+	-$(KUSTOMIZE) $(K8S_DIR)/overlays/dev | kubectl delete --ignore-not-found -f -
+	-$(KUSTOMIZE) $(K8S_DIR)/monitoring | kubectl delete --ignore-not-found -f -
+	@echo "Workloads removed. The cluster is still up; 'make k8s-cluster-down' removes it."
+
+k8s-status:
+	@echo "== pods =="
+	@kubectl get pods -n gochat -o wide
+	@kubectl get pods -n monitoring
+	@echo ""
+	@echo "== services =="
+	@kubectl get svc -n gochat
+	@echo ""
+	@echo "== autoscalers =="
+	@kubectl get hpa -n gochat
+
+k8s-hpa:
+	kubectl get hpa -n gochat -w
 
 # ============================================
 # Load Testing Targets

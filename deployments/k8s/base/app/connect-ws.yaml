@@ -1,0 +1,104 @@
+# connect-ws - holds the WebSocket connections.
+#
+# This is the workload the autoscaler in ../../autoscaling acts on, and the
+# reason gochat_connections_active had to be given a writer: its cost is the
+# connections it holds, not the CPU it burns (docs/adr/0012).
+apiVersion: v1
+kind: Service
+metadata:
+  name: connect-ws
+  namespace: gochat
+  labels:
+    app: connect-ws
+spec:
+  selector:
+    app: connect-ws
+  ports:
+    - name: ws
+      port: 7000
+      targetPort: 7000
+    - name: metrics
+      port: 9092
+      targetPort: 9092
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: connect-ws
+  namespace: gochat
+  labels:
+    app: connect-ws
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: connect-ws
+  template:
+    metadata:
+      labels:
+        app: connect-ws
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9092"
+    spec:
+      # Long-lived connections are killed on shutdown either way - the connect
+      # layer has no drain logic, which is its own TODO entry. 30s at least lets
+      # in-flight writes finish.
+      terminationGracePeriodSeconds: 30
+      # Kubernetes has no depends_on. logic and task panic if they cannot reach
+      # their dependencies at startup, so without this they crash-loop until the
+      # dependency appears - which works, but the backoff reaches five minutes and
+      # makes "one command brings it up" a lie. Waiting here costs a few seconds
+      # on a cold cluster and nothing on a warm one.
+      initContainers:
+        - name: wait-for-deps
+          image: gochat:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until nc -z etcd 2379; do echo "waiting for etcd:2379"; sleep 2; done
+              echo "dependencies reachable"
+      containers:
+        - name: gochat
+          image: gochat:dev
+          imagePullPolicy: IfNotPresent
+          args: ["/app/gochat", "-module", "connect_websocket"]
+          env:
+            - name: RUN_MODE
+              value: dev
+          ports:
+            - name: ws
+              containerPort: 7000
+            - name: rpc
+              containerPort: 6912
+            - name: rpc-2
+              containerPort: 6913
+            - name: metrics
+              containerPort: 9092
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9092
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Ready means: logic is reachable, the buckets exist, and both RPC
+          # addresses are registered in etcd. That last one is what stops this
+          # pod being a black hole for messages task tries to deliver to it.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9092
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

@@ -1,0 +1,94 @@
+# PostgreSQL holds user accounts - the only durable application state, shared by
+# every logic replica, which is what makes replicating logic correct at all
+# (docs/adr/0005).
+#
+# The schema comes from db/migrations, mounted as a ConfigMap into the image's
+# docker-entrypoint-initdb.d, exactly as docker-compose.yml mounts the directory.
+# It runs once, when the volume is first initialised.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: gochat
+  labels:
+    app: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: gochat
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: gochat
+            - name: POSTGRES_DB
+              value: gochat
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gochat-credentials
+                  key: POSTGRES_PASSWORD
+            # The image only runs the init scripts when the data directory it
+            # creates is empty. PGDATA is set to a subdirectory so that the
+            # volume's own lost+found does not make it look non-empty.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "gochat", "-d", "gochat"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "gochat", "-d", "gochat"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: migrations
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: migrations
+          configMap:
+            name: postgres-migrations
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

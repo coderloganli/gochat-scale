@@ -22,7 +22,9 @@ before they read any handler.
 
 **Anyone running it.** One command brings the whole system up, one flag scales a
 service, and the dashboards show what it is doing. If that takes more than a few
-minutes, the project has failed at its main job.
+minutes, the project has failed at its main job. That promise holds for both
+deployment targets: `make compose-dev` for Docker Compose, `make k8s-up` for a
+local Kubernetes cluster.
 
 ## What it does
 

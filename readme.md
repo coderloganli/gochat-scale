@@ -42,7 +42,8 @@ This fork adds **production-ready multi-container deployment** to the original g
 - ✅ **Horizontal Scaling**: Scale Logic, Connect, Task, and API services independently
 - ✅ **Docker Compose**: One-command deployment with `make compose-dev` or `make compose-prod`
 - ✅ **Auto-Configuration**: Container IPs automatically registered to etcd for proper RPC communication
-- ✅ **Health Checks**: Each service monitors its own health with auto-restart
+- ✅ **Health Checks**: Every service serves `/health` for liveness and `/ready` for readiness, and the two mean different things
+- ✅ **Kubernetes**: Kustomize manifests on a local kind cluster, with autoscaling on custom Prometheus metrics — see [docs/kubernetes.md](docs/kubernetes.md)
 - ✅ **Dev/Prod Configs**: Separate configurations for development and production environments
 
 ### Quick Start
@@ -57,6 +58,19 @@ docker compose -f docker-compose.yml -f deployments/docker-compose.dev.yml up
 # Visit the chat app
 http://localhost:8080
 ```
+
+### On Kubernetes
+
+```bash
+make k8s-cluster-up   # create the local kind cluster
+make k8s-up           # deploy everything and wait for it
+```
+
+Same URL, http://localhost:8080. This is where readiness probes and autoscaling
+are actually exercised: connect-ws scales on active connections rather than CPU,
+and api scales on in-flight requests below the load-shedding threshold. Details
+and caveats in [docs/kubernetes.md](docs/kubernetes.md). Compose and Kubernetes
+bind the same host ports, so run one at a time.
 
 ### Scaling Services
 

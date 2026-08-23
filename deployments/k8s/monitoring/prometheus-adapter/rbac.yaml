@@ -1,0 +1,119 @@
+# prometheus-adapter RBAC, for the custom metrics API only.
+#
+# This is modelled on the upstream v0.12.0 manifests rather than copied from
+# them, and the reason is worth stating: upstream is written on the assumption
+# that the adapter *replaces* metrics-server. Its objects are named
+# `system:aggregated-metrics-reader`, `resource-metrics:system:auth-delegator`
+# and `resource-metrics-auth-reader`, and the first of those is the same name
+# metrics-server's own manifest uses. Applying both sets would have one silently
+# overwrite the other.
+#
+# Here the two coexist: metrics-server keeps metrics.k8s.io and answers
+# `kubectl top` and CPU-based autoscaling, and the adapter serves only
+# custom.metrics.k8s.io. Every object below is named for that, so nothing clashes.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-adapter
+  namespace: monitoring
+---
+# Needed to associate a Prometheus series with the Kubernetes object it belongs
+# to - the pod and namespace labels the scrape config produces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-adapter
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "pods", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-adapter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-adapter
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: monitoring
+---
+# An aggregated API server has to be able to authenticate and authorise the
+# requests the kube-apiserver forwards to it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: custom-metrics:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: custom-metrics-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: monitoring
+---
+# The HPA controller is granted metrics.k8s.io out of the box but not
+# custom.metrics.k8s.io. Without this the HPA objects read <unknown> for ever and
+# the events say "unable to fetch metrics" - which looks exactly like a broken
+# adapter and is not.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: custom-metrics-reader
+rules:
+  - apiGroups: ["custom.metrics.k8s.io"]
+    resources: ["*"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hpa-controller-custom-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: custom-metrics-reader
+subjects:
+  - kind: ServiceAccount
+    name: horizontal-pod-autoscaler
+    namespace: kube-system
+---
+# Registers the adapter as the backend for custom.metrics.k8s.io.
+#
+# Upstream's api-service.yaml registers v1beta1.metrics.k8s.io instead - the
+# resource metrics API. Using it would displace metrics-server and break CPU
+# autoscaling. This is the single easiest thing to get wrong in the whole
+# arrangement. See docs/adr/0012.
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.custom.metrics.k8s.io
+spec:
+  group: custom.metrics.k8s.io
+  groupPriorityMinimum: 100
+  versionPriority: 100
+  version: v1beta1
+  service:
+    name: prometheus-adapter
+    namespace: monitoring
+  # The adapter serves a self-signed certificate it generates at startup. Real
+  # clusters point this at a CA bundle; a local demo does not have one.
+  insecureSkipTLSVerify: true

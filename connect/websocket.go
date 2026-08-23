@@ -77,6 +77,7 @@ func (c *Connect) serveWs(server *Server, w http.ResponseWriter, r *http.Request
 		return
 	}
 	atomic.AddInt64(&activeConnections, 1)
+	connectionOpened(serviceWebsocket, connTypeWebsocket)
 	ch := NewChannel(server.Options.BroadcastSize)
 	ch.conn = conn
 	go server.writePump(ch, c)
