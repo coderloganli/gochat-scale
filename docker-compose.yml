@@ -91,6 +91,8 @@ services:
     command: ["/app/gochat", "-module", "logic"]
     environment:
       - RUN_MODE=dev
+      - GOCHAT_GRACEFUL_SHUTDOWN=${GOCHAT_GRACEFUL_SHUTDOWN:-true}
+      - TRACING_SAMPLING_RATE=${TRACING_SAMPLING_RATE:-}
       - DB_PASSWORD=gochat_secret
     # No published host port: it would collide under `--scale logic=N`.
     # Prometheus scrapes 9091 over the compose network; the dev overlay
@@ -118,8 +120,14 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     command: ["/app/gochat", "-module", "connect_websocket"]
+    # Long-lived connections need room to leave. Shutdown is capped at 5s
+    # internally; this is that plus slack for deregistration and listener
+    # teardown. Docker's default is 10s, which can SIGKILL a drain in progress.
+    stop_grace_period: 15s
     environment:
       - RUN_MODE=dev
+      - GOCHAT_GRACEFUL_SHUTDOWN=${GOCHAT_GRACEFUL_SHUTDOWN:-true}
+      - TRACING_SAMPLING_RATE=${TRACING_SAMPLING_RATE:-}
     ports:
       - "7000:7000"
       - "9092:9092"
@@ -144,8 +152,12 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     command: ["/app/gochat", "-module", "connect_tcp"]
+    # See connect-ws above.
+    stop_grace_period: 15s
     environment:
       - RUN_MODE=dev
+      - GOCHAT_GRACEFUL_SHUTDOWN=${GOCHAT_GRACEFUL_SHUTDOWN:-true}
+      - TRACING_SAMPLING_RATE=${TRACING_SAMPLING_RATE:-}
     ports:
       - "7001:7001"
       - "7002:7002"
@@ -173,6 +185,8 @@ services:
     command: ["/app/gochat", "-module", "task"]
     environment:
       - RUN_MODE=dev
+      - GOCHAT_GRACEFUL_SHUTDOWN=${GOCHAT_GRACEFUL_SHUTDOWN:-true}
+      - TRACING_SAMPLING_RATE=${TRACING_SAMPLING_RATE:-}
     ports:
       - "9094:9094"
     depends_on:
@@ -202,6 +216,8 @@ services:
     command: ["/app/gochat", "-module", "api"]
     environment:
       - RUN_MODE=dev
+      - GOCHAT_GRACEFUL_SHUTDOWN=${GOCHAT_GRACEFUL_SHUTDOWN:-true}
+      - TRACING_SAMPLING_RATE=${TRACING_SAMPLING_RATE:-}
     ports:
       - "7070:7070"
     depends_on:
@@ -227,6 +243,8 @@ services:
     command: ["/app/gochat", "-module", "site"]
     environment:
       - RUN_MODE=dev
+      - GOCHAT_GRACEFUL_SHUTDOWN=${GOCHAT_GRACEFUL_SHUTDOWN:-true}
+      - TRACING_SAMPLING_RATE=${TRACING_SAMPLING_RATE:-}
     ports:
       - "8080:8080"
     depends_on:

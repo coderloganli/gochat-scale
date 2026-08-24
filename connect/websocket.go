@@ -6,9 +6,9 @@
 package connect
 
 import (
+	"net"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -17,8 +17,6 @@ import (
 )
 
 const maxConnections = 10000
-
-var activeConnections int64
 
 // bufferPool implements websocket.BufferPool using sync.Pool
 // to reuse buffers across connections.
@@ -62,12 +60,33 @@ func (c *Connect) InitWebsocket() error {
 		MaxHeaderBytes:    4096,
 	}
 
-	err := srv.ListenAndServe()
-	return err
+	// Bind before returning, so a port already in use is a startup error rather
+	// than something the process discovers later. Serving happens in the
+	// background: Start must return for the signal handler to be installed at
+	// all, which is why the websocket role never saw SIGTERM before.
+	ln, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return err
+	}
+
+	c.httpSrv = srv
+	go func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			logrus.Errorf("websocket server: %v", err)
+		}
+	}()
+	return nil
 }
 
 func (c *Connect) serveWs(server *Server, w http.ResponseWriter, r *http.Request) {
-	if atomic.LoadInt64(&activeConnections) >= maxConnections {
+	// Checked before the capacity limit: a departing instance refuses new work
+	// whether or not it is full, because a drain that keeps taking connections
+	// never converges.
+	if server.Draining() {
+		http.Error(w, "draining", http.StatusServiceUnavailable)
+		return
+	}
+	if server.Registry.Len() >= maxConnections {
 		http.Error(w, "too many connections", http.StatusServiceUnavailable)
 		return
 	}
@@ -76,10 +95,17 @@ func (c *Connect) serveWs(server *Server, w http.ResponseWriter, r *http.Request
 		logrus.Errorf("serverWs err:%s", err.Error())
 		return
 	}
-	atomic.AddInt64(&activeConnections, 1)
-	connectionOpened(serviceWebsocket, connTypeWebsocket)
 	ch := NewChannel(server.Options.BroadcastSize)
 	ch.conn = conn
+	// Registered before the read loop starts, so that a connection which has not
+	// authenticated yet — and therefore belongs to no bucket — is still
+	// something shutdown can find and close.
+	server.Registry.Add(ch)
+	// Paired with the decrement in readPump's defer, which is also where the
+	// registry entry is removed - the gauge and the registry now describe the
+	// same set, and the admission check above reads that set directly rather
+	// than a counter kept alongside it.
+	connectionOpened(serviceWebsocket, connTypeWebsocket)
 	go server.writePump(ch, c)
 	go server.readPump(ch, c)
 }

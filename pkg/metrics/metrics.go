@@ -219,3 +219,26 @@ var (
 		},
 	)
 )
+
+// Shutdown Metrics
+//
+// A shutdown that quietly hits its cap every time looks the same from outside as
+// one that completes cleanly. These make the difference visible.
+var (
+	ShutdownConnectionsClosedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "gochat_shutdown_connections_closed_total",
+			Help: "Connections closed during shutdown, by how they ended",
+		},
+		[]string{"service", "reason"}, // reason: close_frame/forced
+	)
+
+	ShutdownDurationSeconds = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gochat_shutdown_duration_seconds",
+			Help:    "How long a graceful shutdown took, end to end",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"service"},
+	)
+)

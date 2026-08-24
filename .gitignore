@@ -6,6 +6,8 @@ loadtest/reports/*
 !loadtest/reports/*-steps.json
 !loadtest/reports/ab/
 !loadtest/reports/ab/*-steps.json
+!loadtest/reports/drain/
+!loadtest/reports/drain/*.json
 
 # Build output
 bin/

@@ -110,7 +110,15 @@ func (c *Connect) InitConnectWebsocketRpcServer() (err error) {
 			logrus.Panicf("InitConnectWebsocketRpcServer ParseNetwork error : %s", err)
 		}
 		logrus.Infof("Connect start run at-->%s:%s", network, addr)
-		go c.createConnectWebsocktsRpcServer(network, addr)
+		// Built here rather than inside the goroutine, so that Stop cannot race
+		// the slice it has to walk to deregister.
+		s := c.newConnectRpcServer(network, addr, "ws")
+		if s == nil {
+			// Registration failed; there is nothing to serve on and readiness
+			// will keep this instance out of the Service.
+			continue
+		}
+		go func(network, addr string) { _ = s.Serve(network, addr) }(network, addr)
 	}
 	return
 }
@@ -123,7 +131,13 @@ func (c *Connect) InitConnectTcpRpcServer() (err error) {
 			logrus.Panicf("InitConnectTcpRpcServer ParseNetwork error : %s", err)
 		}
 		logrus.Infof("Connect start run at-->%s:%s", network, addr)
-		go c.createConnectTcpRpcServer(network, addr)
+		s := c.newConnectRpcServer(network, addr, "tcp")
+		if s == nil {
+			// Registration failed; there is nothing to serve on and readiness
+			// will keep this instance out of the Service.
+			continue
+		}
+		go func(network, addr string) { _ = s.Serve(network, addr) }(network, addr)
 	}
 	return
 }
@@ -177,36 +191,30 @@ func (rpc *RpcConnectPush) PushRoomInfo(ctx context.Context, pushRoomMsgReq *pro
 	return
 }
 
-func (c *Connect) createConnectWebsocktsRpcServer(network string, addr string) {
+// newConnectRpcServer builds an rpcx server, registers it, and remembers it so
+// that shutdown can deregister it from etcd.
+//
+// There is deliberately no RegisterOnShutdown hook here. In rpcx v1.7.4 the
+// onShutdown slice is appended to and never read (server/server.go:92,865), so
+// the s.UnregisterAll() this code used to register had never run. What actually
+// removes the etcd node is Shutdown itself, through Plugins.DoUnregister.
+func (c *Connect) newConnectRpcServer(network, addr, serverType string) *server.Server {
 	s := server.NewServer()
 	addRegistryPlugin(s, network, addr)
-	//config.Conf.Connect.ConnectTcp.ServerId
-	//s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("%s", config.Conf.Connect.ConnectWebsocket.ServerId))
-	if err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("serverId=%s&serverType=ws", c.ServerId)); err != nil {
-		logrus.Errorf("connect websocket rpc register error:%s", err.Error())
-		return
+	if err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush),
+		fmt.Sprintf("serverId=%s&serverType=%s", c.ServerId, serverType)); err != nil {
+		logrus.Errorf("register connect rpc server: %v", err)
+		// Deliberately not calling etcdRegistered(): the readiness gate must stay
+		// shut. A connect instance that is serving but not in the registry is a
+		// black hole - task resolves recipients through etcd and silently drops
+		// what it cannot route.
+		return nil
 	}
-	// Registration has happened, so this address is now resolvable by task.
+	// Registration is synchronous here, before Serve is spawned, so this is a
+	// fact rather than a race: task can now resolve this address.
 	etcdRegistered()
-	s.RegisterOnShutdown(func(s *server.Server) {
-		s.UnregisterAll()
-	})
-	s.Serve(network, addr)
-}
-
-func (c *Connect) createConnectTcpRpcServer(network string, addr string) {
-	s := server.NewServer()
-	addRegistryPlugin(s, network, addr)
-	//s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("%s", config.Conf.Connect.ConnectTcp.ServerId))
-	if err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathConnect, new(RpcConnectPush), fmt.Sprintf("serverId=%s&serverType=tcp", c.ServerId)); err != nil {
-		logrus.Errorf("connect tcp rpc register error:%s", err.Error())
-		return
-	}
-	etcdRegistered()
-	s.RegisterOnShutdown(func(s *server.Server) {
-		s.UnregisterAll()
-	})
-	s.Serve(network, addr)
+	c.rpcServers = append(c.rpcServers, s)
+	return s
 }
 
 func addRegistryPlugin(s *server.Server, network string, addr string) {

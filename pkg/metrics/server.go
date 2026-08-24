@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"sync/atomic"
 	"time"
 
 	"gochat/pkg/health"
@@ -14,22 +15,40 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// StartMetricsServer starts an HTTP server for Prometheus metrics and pprof endpoints
-func StartMetricsServer(port int) *http.Server {
+// draining is set once a shutdown has begun.
+var draining atomic.Bool
+
+// SetDraining marks this process as shutting down. Once set, /ready reports that
+// the process should stop being sent work, while /metrics keeps serving so that
+// the shutdown itself stays observable, and /health keeps saying the process is
+// alive - which it is.
+func SetDraining() {
+	draining.Store(true)
+}
+
+// Draining reports whether a shutdown has begun.
+func Draining() bool {
+	return draining.Load()
+}
+
+// newMux builds the handler served on the metrics port.
+func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 
-	// Liveness. Deliberately unconditional: it answers "is this process wedged",
-	// and a dependency being down is not a reason to restart anything. Checking
-	// dependencies here is how a database outage becomes a cluster-wide crash
-	// loop. See docs/adr/0011.
+	// Liveness. Unconditional, and deliberately so - including while draining.
+	//
+	// Draining is the one moment when the difference between the two probes
+	// really bites. A pod on its way out must stop receiving traffic, which is
+	// readiness; it must emphatically not be restarted, which is what a liveness
+	// probe failing would ask the kubelet to do, in the middle of the very
+	// shutdown that is trying to close connections cleanly.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
-	// Readiness. Answers "should I be sent traffic", which is a different
-	// question, and the only one that consults the registered checks.
+	// Readiness: the registered dependency checks, plus the drain state.
 	mux.HandleFunc("/ready", readyHandler)
 
 	// Register pprof endpoints for profiling
@@ -45,19 +64,7 @@ func StartMetricsServer(port int) *http.Server {
 	mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
 	mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
 
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: mux,
-	}
-
-	go func() {
-		logrus.Infof("Metrics server listening on :%d", port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logrus.Errorf("Metrics server error: %v", err)
-		}
-	}()
-
-	return srv
+	return mux
 }
 
 // readyCheckTimeout bounds the whole set of readiness checks. A check that
@@ -66,12 +73,22 @@ func StartMetricsServer(port int) *http.Server {
 const readyCheckTimeout = 2 * time.Second
 
 func readyHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Checked before the dependency checks, and short-circuiting them. Once the
+	// process is leaving, whether Redis answers is beside the point, and there
+	// is no reason to spend a probe's budget asking.
+	if draining.Load() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]any{"status": "draining"})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), readyCheckTimeout)
 	defer cancel()
 
 	ok, failures := health.Run(ctx)
 
-	w.Header().Set("Content-Type", "application/json")
 	if ok {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]any{"status": "ready"})
@@ -88,9 +105,27 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ShutdownMetricsServer gracefully shuts down the metrics server
-func ShutdownMetricsServer(srv *http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+// StartMetricsServer starts an HTTP server for Prometheus metrics and pprof endpoints
+func StartMetricsServer(port int) *http.Server {
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: newMux(),
+	}
+
+	go func() {
+		logrus.Infof("Metrics server listening on :%d", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logrus.Errorf("Metrics server error: %v", err)
+		}
+	}()
+
+	return srv
+}
+
+// ShutdownMetricsServer gracefully shuts down the metrics server within the
+// caller's budget. It must not invent a deadline of its own: the whole shutdown
+// is capped by lifecycle.ShutdownTimeout, and a private timeout here would be
+// added on top of that cap rather than fitting inside it.
+func ShutdownMetricsServer(ctx context.Context, srv *http.Server) error {
 	return srv.Shutdown(ctx)
 }

@@ -111,7 +111,28 @@ func Init() {
 		viper.Unmarshal(&Conf.Api)
 		viper.Unmarshal(&Conf.Site)
 		applyDBEnvOverrides(&Conf.Common.CommonDB)
+		applyTracingEnvOverrides(&Conf.Common.CommonTracing)
 	})
+}
+
+// applyTracingEnvOverrides lets a deployment change how much is sampled without
+// a rebuild. Dev samples at 1%, which is right under load and wrong for a test
+// that has to assert traces exist at all: at 1% "there are traces" fails at
+// random. The integration stack sets TRACING_SAMPLING_RATE=1.0.
+func applyTracingEnvOverrides(c *CommonTracing) {
+	if v := os.Getenv("TRACING_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			c.Enabled = enabled
+		}
+	}
+	if v := os.Getenv("TRACING_ENDPOINT"); v != "" {
+		c.Endpoint = v
+	}
+	if v := os.Getenv("TRACING_SAMPLING_RATE"); v != "" {
+		if rate, err := strconv.ParseFloat(v, 64); err == nil {
+			c.SamplingRate = rate
+		}
+	}
 }
 
 // applyDBEnvOverrides lets the deployment supply database connection details

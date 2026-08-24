@@ -8,7 +8,6 @@ package connect
 import (
 	"encoding/json"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -22,6 +21,11 @@ type Server struct {
 	Options   ServerOptions
 	bucketIdx uint32
 	operator  Operator
+
+	// Registry holds every accepted connection, authenticated or not, so that
+	// shutdown can reach the ones no bucket knows about. See registry.go.
+	Registry *Registry
+	draining int32
 }
 
 type ServerOptions struct {
@@ -40,6 +44,9 @@ func NewServer(b []*Bucket, o Operator, options ServerOptions) *Server {
 	s.Options = options
 	s.bucketIdx = uint32(len(b))
 	s.operator = o
+	// One shard per bucket: the registry sees the same accept and disconnect
+	// rate the buckets do, so it wants the same amount of lock spreading.
+	s.Registry = NewRegistry(len(b))
 	return s
 }
 
@@ -91,8 +98,13 @@ func (s *Server) writePump(ch *Channel, c *Connect) {
 
 func (s *Server) readPump(ch *Channel, c *Connect) {
 	defer func() {
-		atomic.AddInt64(&activeConnections, -1)
+		// Removed last, not first. The registry is what shutdown waits on, and
+		// it has to mean "this connection is fully torn down", not "its read
+		// loop returned" — otherwise WaitEmpty releases while the DisConnect
+		// RPCs below are still in flight and the process exits before they land.
+		defer s.Registry.Remove(ch)
 		connectionClosed(serviceWebsocket, connTypeWebsocket)
+
 		close(ch.done)
 		if ch.Room == nil || ch.userId == 0 {
 			logrus.Debugf("readPump closing: roomId or userId is 0")
@@ -103,6 +115,10 @@ func (s *Server) readPump(ch *Channel, c *Connect) {
 		disConnectRequest := new(proto.DisConnectRequest)
 		disConnectRequest.RoomId = ch.Room.Id
 		disConnectRequest.UserId = ch.userId
+		// Naming the instance lets logic clear the routing key only while it
+		// still points here, so a late teardown cannot delete the mapping of a
+		// user who has already reconnected somewhere else.
+		disConnectRequest.ServerId = c.ServerId
 		s.Bucket(ch.userId).DeleteChannel(ch)
 		if err := s.operator.DisConnect(disConnectRequest); err != nil {
 			logrus.Warnf("DisConnect err :%s", err.Error())

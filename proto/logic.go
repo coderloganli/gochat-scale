@@ -66,6 +66,11 @@ type ConnectReply struct {
 type DisConnectRequest struct {
 	RoomId int
 	UserId int
+	// ServerId names the connect instance the connection was held by, so that
+	// logic clears the userId -> serverId routing key only while it still points
+	// at that instance. An empty value skips the delete rather than risking the
+	// mapping of a user who has already reconnected elsewhere.
+	ServerId string
 }
 
 type DisConnectReply struct {

@@ -42,7 +42,10 @@ config and makes the routing rule invisible from the code.
 ## Consequences
 
 - etcd is a hard dependency at startup. Services panic rather than start without it.
-- Registrations refresh on an interval (`UpdateInterval: time.Minute`), so a
-  crashed instance can stay in the registry briefly. task tolerates a failed call
-  but does not redeliver — see the delivery gap in `docs/architecture.md`.
+- Registrations refresh on an interval (`UpdateInterval: time.Minute`) and are
+  written with `TTL = UpdateInterval * 2`, so a crashed instance stays in the
+  registry for up to two minutes. task tolerates a failed call but does not
+  redeliver — see the delivery gap in `docs/architecture.md`. An instance that is
+  shut down rather than killed deletes its own node first; see
+  [0014](./0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md).
 - Adding a replica requires no configuration change anywhere.

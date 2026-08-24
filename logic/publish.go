@@ -71,28 +71,40 @@ func (logic *Logic) InitRpcServer() (err error) {
 			logrus.Panicf("InitLogicRpc ParseNetwork error : %s", err.Error())
 		}
 		logrus.Infof("logic start run at-->%s:%s", network, addr)
-		go logic.createRpcServer(network, addr)
+		// Built here rather than inside the goroutine, so that Stop cannot race
+		// the slice it has to walk to deregister.
+		s := logic.newRpcServer(network, addr)
+		if s == nil {
+			// Registration failed; readiness keeps this instance out of the
+			// Service rather than letting it serve unreachable.
+			continue
+		}
+		go func(network, addr string) { _ = s.Serve(network, addr) }(network, addr)
 	}
 	return
 }
 
-func (logic *Logic) createRpcServer(network string, addr string) {
+// newRpcServer builds an rpcx server, registers it, and remembers it so that
+// shutdown can deregister it from etcd.
+//
+// There is deliberately no RegisterOnShutdown hook. In rpcx v1.7.4 the
+// onShutdown slice is appended to and never read (server/server.go:92,865), so
+// the s.UnregisterAll() this code used to register had never run. What actually
+// removes the etcd node is Shutdown itself, through Plugins.DoUnregister.
+func (logic *Logic) newRpcServer(network string, addr string) *server.Server {
 	s := server.NewServer()
 	s.Plugins.Add(middleware.NewPrometheusRPCPlugin("logic"))
 	logic.addRegistryPlugin(s, network, addr)
 	// serverId must be unique
-	//err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathLogic, new(RpcLogic), fmt.Sprintf("%s", config.Conf.Logic.LogicBase.ServerId))
-	err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathLogic, new(RpcLogic), fmt.Sprintf("%s", logic.ServerId))
-	if err != nil {
+	if err := s.RegisterName(config.Conf.Common.CommonEtcd.ServerPathLogic, new(RpcLogic), logic.ServerId); err != nil {
 		logrus.Errorf("register error:%s", err.Error())
-		return
+		return nil
 	}
-	// Registered in etcd, so api and connect can now discover this address.
+	// Registered in etcd, so api and connect can now discover this address, and
+	// readiness can stop reporting this instance as unreachable.
 	etcdRegistered()
-	s.RegisterOnShutdown(func(s *server.Server) {
-		s.UnregisterAll()
-	})
-	s.Serve(network, addr)
+	logic.rpcServers = append(logic.rpcServers, s)
+	return s
 }
 
 func (logic *Logic) addRegistryPlugin(s *server.Server, network string, addr string) {
@@ -249,4 +261,56 @@ func (logic *Logic) getUserKey(authKey string) string {
 	returnKey.WriteString(config.RedisPrefix)
 	returnKey.WriteString(authKey)
 	return returnKey.String()
+}
+
+// Outcomes of clearUserServerIdScript. They also answer the question the rest
+// of DisConnect needs answered: is this user still ours to clean up?
+const (
+	// DisconnectStale means the routing key names a different instance, so the
+	// user has already reconnected elsewhere and none of their state is ours.
+	DisconnectStale = 0
+	// DisconnectCleared means the key named this instance and was removed.
+	DisconnectCleared = 1
+	// DisconnectAbsent means there was no key — cleared already, or expired.
+	DisconnectAbsent = 2
+)
+
+// clearUserServerIdScript deletes the userId -> serverId routing key when it
+// still holds the serverId given, and reports what it found.
+//
+// The compare and the delete have to be one step. A plain DEL would race a user
+// who has already reconnected somewhere else: the departing instance's late
+// DisConnect would delete the fresh mapping and black-hole that user until they
+// reconnected again.
+var clearUserServerIdScript = redis.NewScript(`
+local current = redis.call('GET', KEYS[1])
+if not current then
+	return 2
+end
+if current == ARGV[1] then
+	redis.call('DEL', KEYS[1])
+	return 1
+end
+return 0
+`)
+
+// clearUserServerId removes a user's routing key if it still names serverId,
+// and reports whether the user still belongs to that instance.
+//
+// An unknown serverId — a caller that has not been updated — reports Absent, so
+// the old unconditional behaviour is what happens rather than a silent skip.
+func (logic *Logic) clearUserServerId(userId int, serverId string) (int, error) {
+	if userId == 0 || serverId == "" {
+		return DisconnectAbsent, nil
+	}
+	userKey := logic.getUserKey(fmt.Sprintf("%d", userId))
+	result, err := clearUserServerIdScript.Run(RedisClient, []string{userKey}, serverId).Result()
+	if err != nil {
+		return DisconnectAbsent, err
+	}
+	code, ok := result.(int64)
+	if !ok {
+		return DisconnectAbsent, fmt.Errorf("unexpected script result %T", result)
+	}
+	return int(code), nil
 }

@@ -322,6 +322,91 @@ January numbers were measured on a build with the Redis bug in it, silently. How
 much of that 600 VU collapse was congestion and how much was a corrupted session
 store is not knowable from the artifacts.
 
+## Shutdown behaviour (2026-08)
+
+What a connect instance's departure costs its clients, measured with graceful
+shutdown on and then off. Same image, same procedure, one environment variable
+changed — the method used for the overload A/B above.
+
+### What the control arm reproduces
+
+`GOCHAT_GRACEFUL_SHUTDOWN=false` makes the process exit on the signal without
+running any teardown, which reproduces the *effects* of the SIGTERM nobody
+handled: the kernel tears the sockets down, the etcd node is left to its
+two-minute TTL, and Redis keeps the routing key. It does not reproduce the
+signal disposition itself, and the difference is worth naming rather than
+glossing.
+
+### The two arms
+
+Both run `make drain-demo`, which brings up a stack with `--scale connect-ws=2`,
+holds N WebSocket connections across the two replicas, sends room messages
+throughout, restarts replica 1, and records per connection what the client saw.
+
+50 connections, 25 on the replica that gets restarted and 25 on the one that does
+not, room messages every 200 ms, a 20 second observation window. Evidence in
+`loadtest/reports/drain/{graceful,control}.json`.
+
+| | control (`false`) | graceful (`true`) |
+|---|---|---|
+| Closed with 1001 going away | 0 (0%) | **25 (100%)** |
+| Closed with another close code | 25 (100%) | 0 |
+| Time to notice, p50 / p95 | 46.7 ms / 48.7 ms | 52.1 ms / 52.1 ms |
+| etcd registration outlived the stop by | **still present after 20 s** | **683 ms** |
+| Room messages sent | 99 | 99 |
+| Frames received on the surviving replica | 2,475 | 3,100 |
+
+Three things in that table are worth reading carefully.
+
+**The close code is the whole point, and it is binary.** Every connection on the
+restarted replica gets 1001 in one arm and none does in the other. The control
+arm's "another close code" is 1006, abnormal closure, which gorilla synthesises
+when the socket dies without a close frame — indistinguishable from a network
+failure, which is exactly the problem.
+
+**Time to notice barely moves, and that is not a disappointment.** Both arms
+notice in about 50 ms, because the TCP close reaches the client at the same
+moment either way. Graceful shutdown does not make a client notice *faster*; it
+makes the client able to tell *what happened*. Any claim that it shortens the
+outage should be treated as a measurement error.
+
+**etcd residency is where the large number is.** 683 ms against a registration
+still standing when the window closed 20 seconds later — and the ceiling on that
+is the two-minute TTL, not 20 seconds. That window is `task` routing messages to
+an instance that does not exist and dropping them silently.
+
+**The frame counts differ for a reason worth naming, and the arithmetic is
+exact.** Both arms sent 99 room messages; 99 to 25 connections is 2,475, which is
+the control arm's number to the frame. The graceful arm's 3,100 is 625 higher,
+and 625 is exactly 25 × 25: each of the 25 disconnects runs a `DisConnect` that
+republishes room membership to all 25 surviving connections. In the control arm
+no disconnect ever runs, so **the surviving clients are never told the room
+emptied** and their membership view stays stale. That is a second, unlooked-for
+consequence of the same fix — and it is not extra chat throughput, which is why
+the row says frames rather than messages.
+
+The exactness is itself the check. An earlier run of this measurement counted
+2,500 in the control arm, because the sender counted any HTTP response as a send
+and this API answers 200 to everything with the real status in the body. The
+figure only became checkable once the sender read the body's `code`.
+
+### What this cannot show
+
+**It does not reduce message loss to zero.** `task` still resolves `serverId` at
+delivery time and drops the message if that instance has gone
+(`task/push.go`). Graceful shutdown narrows the window from the etcd TTL to the
+length of a shutdown; it does not close it. Expect the surviving replica's
+message count to be similar in both arms — if it is dramatically better in the
+graceful arm, suspect the measurement.
+
+**It does not make clients reconnect.** Sending 1001 makes correct client
+behaviour possible. The bundled frontend does not act on it. What the
+measurement can show is that the information reached the client, not that anyone
+used it.
+
+See
+[ADR 0014](./adr/0014-a-departing-connect-instance-deregisters-before-it-closes-connections.md).
+
 ## Gaps to close
 
 Ordered by how much each would change what this document can claim.
@@ -389,6 +474,10 @@ make loadtest-capacity K6_START_VUS=400 K6_END_VUS=2800 K6_STEP_VUS=400 \
     K6_STEP_DURATION=30s K6_RAMP_DURATION=15s K6_WARMUP_DURATION=15s
 
 make loadtest-stop
+
+# The shutdown A/B. Brings up its own stack with two connect-ws replicas, runs
+# both arms, and writes loadtest/reports/drain/{graceful,control}.json.
+make drain-demo
 ```
 
 Flush Redis and truncate `users` between arms, or the second run starts with the

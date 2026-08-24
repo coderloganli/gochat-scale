@@ -22,9 +22,11 @@ require (
 )
 
 require (
+	github.com/prometheus/client_model v0.3.0
 	github.com/rpcxio/libkv v0.5.1-0.20210420120011-1fceaedca8a5
 	github.com/rpcxio/rpcx-etcd v0.1.0
 	github.com/smallnest/rpcx v1.7.4
+	go.etcd.io/etcd/client/v3 v3.5.1
 	golang.org/x/crypto v0.31.0
 )
 
@@ -97,7 +99,6 @@ require (
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.0-beta.8 // indirect
 	github.com/philhofer/fwd v1.1.1 // indirect
-	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rs/cors v1.8.2 // indirect
@@ -123,7 +124,6 @@ require (
 	go.etcd.io/etcd/api/v3 v3.5.2 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.2 // indirect
 	go.etcd.io/etcd/client/v2 v2.305.2 // indirect
-	go.etcd.io/etcd/client/v3 v3.5.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.21.0 // indirect
 	go.opentelemetry.io/otel/metric v1.21.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
