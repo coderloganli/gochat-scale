@@ -6,6 +6,17 @@
 # Default HOST_IP for development
 HOST_IP ?= 127.0.0.1
 
+# Host port for connect-ws. The container always listens on 7000; only the
+# published host port moves. macOS AirPlay Receiver (ControlCenter) holds 7000,
+# so a local .env can set WS_HOST_PORT to something free without changing any
+# in-container address, the compiled client, or the Kubernetes manifests.
+# Read from .env so make and docker compose never disagree: compose reads .env
+# itself, and an exported default here would override it.
+WS_HOST_PORT := $(strip $(shell sed -n 's/^WS_HOST_PORT=//p' .env 2>/dev/null))
+ifeq ($(WS_HOST_PORT),)
+WS_HOST_PORT := 7000
+endif
+
 # Replica count for load-test scale-out runs: make loadtest-capacity LOGIC_REPLICAS=3
 LOGIC_REPLICAS ?= 1
 
@@ -169,7 +180,7 @@ test-integration:
 	@sleep 30
 	@echo "Running integration tests from host..."
 	TEST_API_URL=http://localhost:7070 \
-	TEST_WS_URL=ws://localhost:7000/ws \
+	TEST_WS_URL=ws://localhost:$(WS_HOST_PORT)/ws \
 	TEST_REDIS_ADDR=localhost:6379 \
 	TEST_COMPOSE_FILES=docker-compose.yml,deployments/docker-compose.test.yml \
 	go test -v -race -timeout 15m ./tests/integration/... || (docker compose -f docker-compose.yml -f deployments/docker-compose.test.yml down && exit 1)
@@ -179,7 +190,7 @@ test-integration:
 test-integration-quick:
 	@echo "Running integration tests (assumes services are already running)..."
 	TEST_API_URL=http://localhost:7070 \
-	TEST_WS_URL=ws://localhost:7000/ws \
+	TEST_WS_URL=ws://localhost:$(WS_HOST_PORT)/ws \
 	TEST_REDIS_ADDR=localhost:6379 \
 	TEST_COMPOSE_FILES=docker-compose.yml,deployments/docker-compose.test.yml \
 	go test -v -race -timeout 15m ./tests/integration/...

@@ -86,6 +86,11 @@ gochat -module {logic|connect_websocket|connect_tcp|task|api|site}
 | postgres | 5432 | User accounts (shared by all logic replicas) |
 | redis | 6379 | Pub/sub, cache |
 
+Those are the ports inside the container, and they do not move. The published
+host port for connect-ws does: it is `${WS_HOST_PORT:-7000}` in docker-compose.yml,
+because macOS runs an AirPlay Receiver on host 7000. Set WS_HOST_PORT in a local
+`.env` (git-ignored); make reads the same file, so `make test-integration` follows it.
+
 ### Request Flow
 1. Client → API (7070) or Connect-WS (7000)
 2. API/Connect → Logic (RPC) for auth/business logic

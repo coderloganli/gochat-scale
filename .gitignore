@@ -17,3 +17,8 @@ bin/
 
 # Fetched by `make loadtest-deps`, not source
 loadtest/scripts/lib/vendor/
+
+# Machine-local port overrides (see WS_HOST_PORT in the Makefile). Read by both
+# docker compose and make; never committed, because the right value differs per
+# machine — macOS holds 7000 for AirPlay, other hosts do not.
+.env

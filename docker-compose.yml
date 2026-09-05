@@ -129,7 +129,7 @@ services:
       - GOCHAT_GRACEFUL_SHUTDOWN=${GOCHAT_GRACEFUL_SHUTDOWN:-true}
       - TRACING_SAMPLING_RATE=${TRACING_SAMPLING_RATE:-}
     ports:
-      - "7000:7000"
+      - "${WS_HOST_PORT:-7000}:7000"
       - "9092:9092"
     depends_on:
       etcd:
