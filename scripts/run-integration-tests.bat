@@ -1,4 +1,9 @@
 @echo off
+REM Windows only, and not the path this project uses any more: development runs
+REM on macOS, where this file cannot execute. `make test-integration` is the
+REM cross-platform equivalent and is what CI and the documentation refer to.
+REM Kept for anyone still on Windows; nothing in the Makefile or the docs
+REM points here.
 setlocal EnableDelayedExpansion
 
 echo === GoChat Integration Tests ===

@@ -213,6 +213,12 @@ was the reason it was there.
 | | |
 |---|---|
 | Host | AMD Ryzen 7 7800X3D, 8 cores, 31 GB RAM, Windows 11 |
+
+Development moved to an Apple Silicon Mac in September 2026. Nothing below was
+re-measured there, so every number on this page describes hardware the project
+no longer runs on, and none of it is a prediction for the Mac. Gaps 1 and 12
+below already ask for this; the backlog ticket `rerun-mixes-on-current-build`
+now tracks it.
 | Docker | 29.1.3, Linux engine, 8 CPUs and 15.6 GB allocated |
 | Build | working tree at the commit that introduced admission control |
 | Profile | `loadtest/docker-compose.loadtest.yml`, 0.5 CPU per app service |

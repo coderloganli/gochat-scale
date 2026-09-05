@@ -1,4 +1,9 @@
-# PowerShell script to run integration tests on Windows
+# PowerShell script to run integration tests on Windows.
+#
+# Windows only, and not the path this project uses any more: development runs on
+# macOS, where this file cannot execute. `make test-integration` is the
+# cross-platform equivalent and is what CI and the documentation refer to. Kept
+# for anyone still on Windows; nothing in the Makefile or the docs points here.
 param(
     [switch]$SkipBuild,
     [switch]$KeepRunning
