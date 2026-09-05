@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -87,9 +88,16 @@ func TestShutdownMetricsServerRespectsTheCallersContext(t *testing.T) {
 	defer ln.Close()
 
 	// A connection the server is still handling, so that Shutdown has something
-	// to wait for and cannot return immediately on its own.
+	// to wait for and cannot return immediately on its own. Shutdown only waits
+	// for connections it sees as active, so the test must not race ahead of the
+	// server: writing the request is not enough, because the connection stays
+	// idle until the server has read it and entered the handler. inHandler is
+	// what makes that ordering certain.
 	busy := make(chan struct{})
+	inHandler := make(chan struct{})
+	var once sync.Once
 	srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(inHandler) })
 		<-busy
 	})
 	go srv.Serve(ln)
@@ -102,6 +110,13 @@ func TestShutdownMetricsServerRespectsTheCallersContext(t *testing.T) {
 	defer conn.Close()
 	if _, err := conn.Write([]byte("GET /health HTTP/1.1\r\nHost: x\r\n\r\n")); err != nil {
 		t.Fatalf("write: %v", err)
+	}
+
+	select {
+	case <-inHandler:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the server never began handling the request; Shutdown would have " +
+			"had no active connection to wait for and the test would prove nothing")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
